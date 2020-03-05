@@ -421,6 +421,7 @@ if __name__ == "__main__":
         if done:
             break
         time.sleep(0.02)
+
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
