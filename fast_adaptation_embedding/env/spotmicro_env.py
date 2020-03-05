@@ -52,7 +52,7 @@ class SpotMicroEnv(gym.Env):
         self.numSolverIterations = int(NUM_SIMULATION_ITERATION_STEPS / self.action_repeat)
         self.useFixeBased = on_rack
         self.is_render = render
-        self.init_oritentation = p.getQuaternionFromEuler([0, 0, 0])
+        self.init_oritentation = p.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
         self.kp = 0.045
@@ -378,7 +378,7 @@ if __name__ == "__main__":
     render = True
     # render = False
 
-    on_rack = 0
+    on_rack = 1
 
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -414,8 +414,8 @@ if __name__ == "__main__":
                           axis=0)
             amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
         x = np.random.uniform(amin, amax)
-        # action = np.copy(x)
-        action = past[-1]
+        action = np.copy(x)
+
         obs, reward, done, info = env.step(action)
         past = np.append(past, [np.copy(x)], axis=0)
         if done:
