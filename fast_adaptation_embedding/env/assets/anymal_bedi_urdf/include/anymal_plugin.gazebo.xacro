@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:if value="$(arg simulation)">
+    <gazebo>
+      <plugin name="gazebo_ros_control"
+        filename="libanymal_gazebo.so">
+        <robotNamespace>anymal</robotNamespace> <!-- Currently unused -->
+        <robotDescription>quadruped_description</robotDescription>
+        <robotBaseLink>base</robotBaseLink>
+        <statePublisherRate>400.0</statePublisherRate>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
+</robot>

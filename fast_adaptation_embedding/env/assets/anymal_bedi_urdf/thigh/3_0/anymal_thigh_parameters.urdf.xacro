@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Thigh -->
+  <xacro:property name="replace_thigh" value= "false"/>
+  <xacro:property name="T_r_TS_x"      value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="T_r_TS_y"      value= "0.1090"/> <!-- [m] -->
+  <xacro:property name="T_r_TS_z"      value="-0.2500"/> <!-- [m] -->
+  <xacro:property name="T_r_TTcom_x"   value= "-0.0001"/> <!-- [m] -->
+  <xacro:property name="T_r_TTcom_y"   value= "0.0513"/> <!-- [m] -->
+  <xacro:property name="T_r_TTcom_z"   value="-0.2080"/> <!-- [m] -->
+  <xacro:property name="m_T"           value= "1.765"/> <!-- [kg] -->
+  <xacro:property name="T_Ixx_T"       value= "0.013479"/> <!-- [kg * m^2] -->
+  <xacro:property name="T_Iyy_T"       value= "0.013250"/> <!-- [kg * m^2] -->
+  <xacro:property name="T_Izz_T"       value= "0.002229"/> <!-- [kg * m^2] -->
+  <xacro:property name="T_Ixy_T"       value="-0.000003"/> <!-- [kg * m^2] -->
+  <xacro:property name="T_Ixz_T"       value= "0.000038"/> <!-- [kg * m^2] -->
+  <xacro:property name="T_Iyz_T"       value="-0.001623"/> <!-- [kg * m^2] -->
+  <xacro:property name="collision_x_t" value= "0.08"/> <!-- [m] -->
+  <xacro:property name="collision_y_t" value= "0.04"/> <!-- [m] -->
+  <xacro:property name="collision_r_t" value= "0.06"/> <!-- [m] -->
+  <xacro:property name="collision_l_t" value= "0.12"/> <!-- [m] -->
+
+  <!-- Joint HFE -->
+  <xacro:property name="s_hfe_1" value="6.28"/> <!-- [rad] -->
+  <xacro:property name="s_hfe_2" value="6.28"/> <!-- [rad] -->
+  <xacro:property name="v_hfe" value="15"/> <!-- [rad/s] -->
+  <!-- This is the max. torque in freeze mode, torques for active control
+       modes are limited in `anymal_se_actuator_commands.hpp`. -->
+  <xacro:property name="t_hfe" value="80"/> <!-- [Nm] -->
+  <xacro:property name="d_hfe" value="0.0"/> <!-- [Nms/rad] -->
+  <xacro:property name="f_hfe" value="0.0"/> <!-- [Nm] -->
+
+</robot>

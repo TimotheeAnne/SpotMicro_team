@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="M_r_MF_x"       value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="M_r_MF_y"       value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="M_r_MF_z"       value="-0.0519"/> <!-- [m] -->
+  <xacro:property name="q_MF_roll"      value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_MF_pitch"     value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_MF_yaw"       value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="collision_r_f"  value= "0.034625"/> <!-- [m] -->
+
+</robot>

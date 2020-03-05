@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Foot sensor - Optoforce -->
+  <xacro:macro name="anymal_foot" params="leg:=^ mesh_name **properties">
+
+    <!-- Xacro:Properties -->
+    <xacro:insert_block name="properties"/>
+
+    <!-- Foot sensor link -->
+    <xacro:property name="left"  value="${int(leg.startswith('L'))*2-1}"/>
+    <xacro:property name="front" value="${int(leg.startswith('F', 1))*2-1}"/>
+    <link name="${leg}_FOOT_SENSOR">
+      <xacro:if value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${mesh_name}"
+                  scale="${anymal_meshes_scale}"/>
+          </geometry>
+        </visual>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin xyz="${M_r_MF_x} ${M_r_MF_y} ${M_r_MF_z}" rpy="0 0 0"/>
+          <geometry>
+            <sphere radius="${collision_r_f}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin xyz="${M_r_MF_x} ${M_r_MF_y} ${M_r_MF_z}" rpy="0 0 0"/>
+        <geometry>
+          <sphere radius="${collision_r_f}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="${front*M_r_MMcom_x} ${left*M_r_MMcom_y} ${M_r_MMcom_z}"
+                rpy="0 0 0"/>
+          <mass value="${m_M}"/>
+          <inertia ixx="${M_Ixx_M}" ixy="${front*left*M_Ixy_M}" ixz="${front*M_Ixz_M}"
+                   iyy="${M_Iyy_M}" iyz="${left*M_Iyz_M}" izz="${M_Izz_M}"/>
+      </inertial>
+    </link>
+
+    <!-- Foot sensor joint -->
+    <joint name="${leg}_MOUNT_TO_SENSOR" type="fixed">
+      <parent link="${leg}_FOOT_MOUNT"/>
+      <child link="${leg}_FOOT_SENSOR"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Gazebo customization -->
+    <gazebo reference="${leg}_FOOT_SENSOR" >
+      <kp>${kp}</kp>
+      <kd>${kd}</kd>
+      <mu1>${mu}</mu1>
+      <mu2>${mu}</mu2>
+    </gazebo>
+    <gazebo reference="${leg}_MOUNT_TO_SENSOR" />
+
+    <!-- Foot link -->
+    <link name="${leg}_FOOT">
+    </link>
+
+    <!-- Foot joint -->
+    <joint name="${leg}_SENSOR_TO_FOOT" type="fixed">
+      <parent link="${leg}_FOOT_SENSOR"/>
+      <child link="${leg}_FOOT"/>
+      <origin xyz="${M_r_MF_x} ${M_r_MF_y} ${M_r_MF_z}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+
+</robot>

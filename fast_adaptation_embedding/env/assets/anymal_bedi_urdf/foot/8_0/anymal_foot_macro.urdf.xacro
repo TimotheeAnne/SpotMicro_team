@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Foot sensor - Optoforce -->
+  <xacro:macro name="anymal_foot" params="leg:=^ mesh_name **properties">
+
+    <!-- Xacro:Properties -->
+    <xacro:insert_block name="properties"/>
+
+    <!-- Foot sensor link -->
+    <xacro:property name="left"  value="${int(leg.startswith('L'))*2-1}"/>
+    <xacro:property name="front" value="${int(leg.startswith('F', 1))*2-1}"/>
+    <link name="${leg}_MOUNT">
+    </link>
+
+    <!-- Foot adapter joint ankle -->
+    <joint name="${leg}_MOUNT_JOINT" type="fixed">
+      <parent link="${leg}_ADAPTER"/>
+      <child  link="${leg}_MOUNT"/>
+      <origin xyz="${front*A_r_AM_x} ${left*A_r_AM_y} ${A_r_AM_z}"
+              rpy="${left*q_AM_roll} ${front*q_AM_pitch} ${front*q_AM_yaw}"/>
+    </joint>
+
+    <!-- Foot link -->
+    <link name="${leg}_FOOT">
+      <xacro:if value="$(arg mesh)">
+        <xacro:if value="$(arg mesh)">
+          <visual>
+            <origin xyz="0 0 ${-M_r_MF_z}"
+                    rpy="0 0 ${(front-1)*0.5*PI}"/>
+            <geometry>
+              <mesh filename="${mesh_name}"
+                    scale="${anymal_meshes_scale}"/>
+            </geometry>
+            <material name="anymal_material" />
+          </visual>
+        </xacro:if>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 ${-M_r_MF_z - collision_r_f}"/>
+          <geometry>
+            <sphere radius="${collision_r_f}"/>
+          </geometry>
+          <material name="anymal_material"/>
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin xyz="0 0 ${-M_r_MF_z - collision_r_f}"/>
+        <geometry>
+          <sphere radius="${collision_r_f}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Gazebo customization -->
+    <gazebo reference="${leg}_FOOT">
+      <kp>${kp}</kp>
+      <kd>${kd}</kd>
+      <mu1>${mu}</mu1>
+      <mu2>${mu}</mu2>
+    </gazebo>
+
+    <!-- Foot joint -->
+    <joint name="${leg}_MOUNT_TO_FOOT" type="fixed">
+      <parent link="${leg}_MOUNT"/>
+      <child link="${leg}_FOOT"/>
+      <origin xyz="${M_r_MF_x} ${M_r_MF_y} ${M_r_MF_z}"
+              rpy="${left*q_MF_roll} ${front*q_MF_pitch} ${front*q_MF_yaw}"/>
+              <material name="anymal_material"/>
+    </joint>
+
+  </xacro:macro>
+
+
+</robot>

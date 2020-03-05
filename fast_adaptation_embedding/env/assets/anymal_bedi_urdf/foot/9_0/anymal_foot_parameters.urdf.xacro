@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="A_r_AF_x"               value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="A_r_AF_y"               value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="A_r_AF_z"               value="-0.28625"/> <!-- [m] adapter to foot center (0.263) + 0.75*collision_foot_r -->
+  <xacro:property name="mesh_adapter_z_offset"  value= "0.032"/> <!-- [m] -->
+  <xacro:property name="q_AF_roll"              value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_AF_pitch"             value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_AF_yaw"               value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="collision_adapter_r"    value= "0.015"/> <!-- [m] -->
+  <xacro:property name="collision_foot_r"       value= "0.031"/> <!-- [m] -->
+
+</robot>

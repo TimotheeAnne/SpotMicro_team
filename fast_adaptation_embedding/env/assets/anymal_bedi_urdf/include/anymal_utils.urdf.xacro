@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+
+<robot name="anymal" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Import shared components -->
+  <xacro:include filename="$(find any_description)/urdf/materials.urdf.xacro"/>
+  <xacro:include filename="$(find any_description)/urdf/inertia_tensors.urdf.xacro"/>
+  <xacro:include filename="$(find anymal_description)/urdf/include/anymal_plugin.gazebo.xacro"/>
+
+  <!-- Math constants -->
+  <xacro:property name="PI" value="3.1415926535897931"/>
+  <!-- Scale factor for mesh -->
+  <xacro:property name="anymal_meshes_scale_factor" value="0.001"/>
+  <xacro:property name="anymal_meshes_scale"
+    value="${anymal_meshes_scale_factor} ${anymal_meshes_scale_factor}
+    ${anymal_meshes_scale_factor}"/>
+    
+  <!-- Contact model -->
+  <xacro:property name="kp" value="1000000.0"/>
+  <xacro:property name="kd" value="100.0"/>
+  <xacro:property name="mu" value="0.8"/>
+  
+  <!-- Material for the visual primitives -->
+  <material name="anymal_material" >
+    <color rgba="$(arg material_color_rgba)"/>
+  </material>
+
+</robot>

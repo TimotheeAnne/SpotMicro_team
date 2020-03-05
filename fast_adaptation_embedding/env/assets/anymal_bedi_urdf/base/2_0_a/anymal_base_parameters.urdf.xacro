@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Base/Main body version 2 WITHOUT HEAD AND WITHOUT CABLING -->
+  <xacro:property name="l_b"                value= "0.531"/> <!-- [m] -->
+  <xacro:property name="w_b"                value= "0.232"/> <!-- [m] -->
+  <xacro:property name="B_r_BH_x"           value= "0.2629"/> <!-- [m] -->
+  <xacro:property name="B_r_BH_y"           value= "0.1150"/> <!-- [m] -->
+  <xacro:property name="B_r_BH_z"           value= "0.0000"/> <!-- [m] -->
+  <xacro:property name="B_r_BBcom_x"        value= "-0.035"/> <!-- -0.0007. With inspection head 0.022 -> -0.02 [m] -->
+  <xacro:property name="B_r_BBcom_y"        value= "-0.01"/> <!-- -0.03 [m] -->
+  <xacro:property name="B_r_BBcom_z"        value= "0.00"/> <!-- 0.0513 [m] -->
+  <xacro:property name="m_B"                value= "24.0"/> <!-- 19.7157 [kg] -->
+  <xacro:property name="B_Ixx_B"            value= "0.268388530623900"/> <!-- [kg * m^2] -->
+  <xacro:property name="B_Iyy_B"            value= "0.884235660795284"/> <!-- [kg * m^2] -->
+  <xacro:property name="B_Izz_B"            value= "0.829158678306482"/> <!-- [kg * m^2] -->
+  <xacro:property name="B_Ixy_B"            value= "0.000775392455422"/> <!-- [kg * m^2] -->
+  <xacro:property name="B_Ixz_B"            value="-0.015184853445095"/> <!-- [kg * m^2] -->
+  <xacro:property name="B_Iyz_B"            value="-0.000989297489507"/> <!-- [kg * m^2] -->
+  <xacro:property name="collision_body_h"   value= "0.26"/> <!-- [m] -->
+  <xacro:property name="collision_body_l"   value= "0.531"/> <!-- [m] -->
+  <xacro:property name="collision_body_w"   value= "0.232"/> <!-- [m] -->
+
+
+</robot>

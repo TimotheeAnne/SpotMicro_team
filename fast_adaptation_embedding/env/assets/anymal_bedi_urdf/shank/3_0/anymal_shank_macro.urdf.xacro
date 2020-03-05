@@ -1,0 +1,67 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Shank -->
+  <xacro:macro name="anymal_shank" params="leg:=^ mesh_name **properties">
+
+    <!-- Xacro:Properties -->
+    <xacro:insert_block name="properties"/>
+
+    <!-- Shank link -->
+    <xacro:property name="left"  value="${int(leg.startswith('L'))*2-1}"/>
+    <xacro:property name="front" value="${int(leg.startswith('F', 1))*2-1}"/>
+    <link name="${leg}_SHANK">
+      <xacro:if value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 0"
+                  rpy="0 0 ${(front-1)*0.5*PI}"/>
+          <geometry>
+            <mesh filename="${mesh_name}"
+                  scale="${anymal_meshes_scale}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin xyz="${front*collision_z_s*0.5} ${left*(-collision_y_s*0.5+0.02)} 0.01"
+                  rpy="0 ${0.5*pi} 0"/>
+          <geometry>
+            <box size="${collision_x_s} ${collision_y_s} ${collision_z_s}" />
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin xyz="${front*collision_z_s*0.5} ${left*(-collision_y_s*0.5+0.02)} 0.01"
+                rpy="0 ${0.5*pi} 0"/>
+        <geometry>
+          <box size="${collision_x_s} ${collision_y_s} ${collision_z_s}" />
+        </geometry>
+      </collision>
+      <inertial>
+        <origin xyz="${front*S_r_SScom_x} ${left*S_r_SScom_y} ${S_r_SScom_z}"
+                rpy="0 0 0"/>
+        <mass value="${m_S}"/>
+        <inertia ixx="${S_Ixx_S}" ixy="${front*left*S_Ixy_S}" ixz="${front*S_Ixz_S}"
+                 iyy="${S_Iyy_S}" iyz="${left*S_Iyz_S}"       izz="${S_Izz_S}"/>
+      </inertial>
+    </link>
+
+    <!-- Shank joint -->
+    <joint name="${leg}_KFE" type="revolute">
+      <parent link="${leg}_THIGH"/>
+      <child  link="${leg}_SHANK"/>
+      <origin xyz="${front*T_r_TS_x} ${left*T_r_TS_y} ${T_r_TS_z}"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="${t_kfe}"
+             lower="${-(front+1)*0.5*s_kfe_1 + (front-1)*0.5*s_kfe_2}"
+             upper="${-(front-1)*0.5*s_kfe_1 + (front+1)*0.5*s_kfe_2}"
+             velocity="${v_kfe}" />
+      <dynamics damping="${d_kfe}" friction="${f_kfe}"/>
+    </joint>
+  </xacro:macro>
+
+
+</robot>

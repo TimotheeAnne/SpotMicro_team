@@ -1,0 +1,161 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Base -->
+  <xacro:macro name="anymal_base" params="name mesh_name belly_plate_offset:=0.03 **properties">
+
+    <!-- Xacro:Properties -->
+    <xacro:insert_block name="properties"/>
+
+    <!-- Attach the robot to the world link if requested -->
+    <xacro:if value="$(arg fixed)">
+      <gazebo>
+        <joint name="world_joint" type="fixed">
+          <parent>${name}</parent>
+          <child>world</child>
+        </joint>
+      </gazebo>
+    </xacro:if>
+
+    <!-- Base link -->
+    <link name="${name}">
+      <xacro:if value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh
+              filename="${mesh_name}"
+              scale="${anymal_meshes_scale}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual> <!-- Main Body -->
+          <origin xyz="0 0 0.08" rpy="0 0 0"/>
+          <geometry>
+            <box size="${collision_body_l} ${collision_body_w} ${collision_body_h}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual> <!-- HAA actuators -->
+          <origin xyz="${B_r_BH_x-0.05} ${B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+          <geometry>
+            <cylinder radius="0.05" length="0.1"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual>
+          <origin xyz="${B_r_BH_x-0.05} ${-B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+          <geometry>
+            <cylinder radius="0.05" length="0.1"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual>
+          <origin xyz="${-B_r_BH_x+0.05} ${B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+          <geometry>
+            <cylinder radius="0.05" length="0.1"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual>
+          <origin xyz="${-B_r_BH_x+0.05} ${-B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+          <geometry>
+            <cylinder radius="0.05" length="0.1"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual> <!-- Belly plate front bump -->
+          <origin xyz="${collision_body_l/2.0-0.05} 0.0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+          <geometry>
+            <box size="0.1 0.1 0.07"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual> <!-- Belly plate hind bump-->
+          <origin xyz="${-collision_body_l/2.0+0.05} 0.0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+          <geometry>
+            <box size="0.1 0.1 0.07"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+        <visual> <!-- Belly plate middle bump-->
+          <origin xyz="0 0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+          <geometry>
+            <box size="${collision_body_l} 0.02 0.07"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision> <!-- Main Body -->
+        <origin xyz="0 0 0.08" rpy="0 0 0"/>
+        <geometry>
+          <box size="${collision_body_l} ${collision_body_w} ${collision_body_h}"/>
+        </geometry>
+      </collision>
+      <collision> <!-- HAA actuators -->
+        <origin xyz="${B_r_BH_x-0.05} ${B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+        <geometry>
+          <cylinder radius="0.05" length="0.1"/>
+        </geometry>
+      </collision>
+      <collision>
+        <origin xyz="${B_r_BH_x-0.05} ${-B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+        <geometry>
+          <cylinder radius="0.05" length="0.1"/>
+        </geometry>
+      </collision>
+      <collision>
+        <origin xyz="${-B_r_BH_x+0.05} ${B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+        <geometry>
+          <cylinder radius="0.05" length="0.1"/>
+        </geometry>
+      </collision>
+      <collision>
+        <origin xyz="${-B_r_BH_x+0.05} ${-B_r_BH_y} 0" rpy="0 ${0.5*PI} 0"/>
+        <geometry>
+          <cylinder radius="0.05" length="0.1"/>
+        </geometry>
+      </collision>
+      <collision> <!-- Belly plate front bump -->
+        <origin xyz="${collision_body_l/2.0-0.05} 0.0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.1 0.1 0.07"/>
+        </geometry>
+      </collision>
+      <collision> <!-- Belly plate hind bump-->
+        <origin xyz="${-collision_body_l/2.0+0.05} 0.0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.1 0.1 0.07"/>
+        </geometry>
+      </collision>
+      <collision> <!-- Belly plate middle bump-->
+        <origin xyz="0 0 ${-collision_body_h/2.0+belly_plate_offset}" rpy="0 0 0"/>
+        <geometry>
+          <box size="${collision_body_l} 0.02 0.07"/>
+        </geometry>
+      </collision>
+</link>
+
+    <!-- Fixed joint to add dummy inertia link -->
+    <joint name="${name}_to_${name}_inertia" type="fixed">
+      <parent link="${name}"/>
+      <child link="${name}_inertia"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Dummy inertia link, because KDL cannot have inertia on the base link -->
+    <link name="${name}_inertia">
+      <inertial>
+        <origin   xyz="${B_r_BBcom_x} ${B_r_BBcom_y} ${B_r_BBcom_z}"
+                  rpy="0 0 0"/>
+        <mass     value="${m_B}"/>
+        <inertia  ixx="${B_Ixx_B}" ixy="${B_Ixy_B}" ixz="${B_Ixz_B}"
+                  iyy="${B_Iyy_B}" iyz="${B_Iyz_B}" izz="${B_Izz_B}"/>
+      </inertial>
+    </link>
+  </xacro:macro>
+
+</robot>

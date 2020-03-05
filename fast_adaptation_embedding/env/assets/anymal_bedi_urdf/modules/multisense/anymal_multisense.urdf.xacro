@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Multisense -->
+  <xacro:macro name="anymal_multisense" params="name parent mounted_angle_degree mesh:=^ simulation:=^ *mount_calibration_tf *camera_calibration_tf">
+
+    <!-- base to mount_axis_aligned joint -->
+    <joint name="${parent}_to_${name}_mount_axis_aligned" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}_mount_axis_aligned"/>
+      <origin xyz="0.2692 0.0 0.1569" rpy="0.0 0.0 0.0"/>
+    </joint>
+
+    <!-- Multisense mount_axis_aligned link -->
+    <link name="${name}_mount_axis_aligned">
+      <xacro:if value="${mesh == 'true'}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="package://anymal_description/urdf/modules/multisense/anymal_multisense_mount.dae" scale=".001 .001 .001"/>
+          </geometry>
+        </visual>
+        <material name="anymal_material" />
+      </xacro:if>
+      <xacro:unless value="${mesh == 'true'}">
+        <visual>
+          <origin rpy="0 0 0" xyz="0.08 0.0 0.02"/>
+          <geometry>
+            <box size="0.168 0.195 0.04"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin rpy="0 0 0" xyz="0.08 0.0 0.02"/>
+        <geometry>
+          <box size="0.168 0.195 0.04"/>
+        </geometry>
+        <material name="anymal_material" />
+      </collision>
+      <inertial>
+        <!-- Values from CAD -->
+        <origin xyz="0.078608890381 0.000999966453 0.010465821956" rpy="0 0 0"/>
+        <mass value="0.411254098"/>
+        <inertia ixx="0.001383141132159" ixy="-0.000000000071111" ixz="-0.000011007223061" iyy="0.000685526973337" iyz="-0.000000000216688" izz="0.001999724408014"/>
+      </inertial>
+    </link>
+
+    <!-- mount_axis_aligned to mount joint -->
+    <joint name="${name}_mount_axis_aligned_to_${name}_mount" type="fixed">
+      <parent link="${name}_mount_axis_aligned"/>
+      <child link="${name}_mount"/>
+      <xacro:if value="${simulation == 'true'}">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      </xacro:if>
+      <xacro:unless value="${simulation == 'true'}">
+        <xacro:insert_block name="mount_calibration_tf"/>
+      </xacro:unless>    </joint>
+
+    <!-- Multisense mount link -->
+    <link name="${name}_mount"/>
+
+    <!-- Multisense camera joint -->
+    <joint name="${name}_mount_to_${name}_camera_axis_aligned" type="fixed">
+      <parent link="${name}_mount"/>
+      <child link="${name}_camera_axis_aligned"/>
+      <origin xyz="0.102 0.0 0.006" rpy="0 ${mounted_angle_degree / 180.0 * PI} 0"/>
+    </joint>
+
+    <!-- Multisense camera link -->
+    <link name="${name}_camera_axis_aligned">
+      <xacro:if value="${mesh == 'true'}">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="package://anymal_description/urdf/modules/multisense/anymal_multisense.dae" scale=".001 .001 .001"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:if>
+      <xacro:unless value="${mesh == 'true'}">
+        <visual>
+          <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+          <geometry>
+            <box size="0.110 0.125 0.064"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+        <geometry>
+          <box size="0.110 0.125 0.064"/>
+        </geometry>
+        <material name="anymal_material" />
+      </collision>
+      <inertial>
+        <!-- Values from CAD -->
+        <origin xyz="0.002955293850 -0.000023224904 0.001943060417" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.001723279503491" ixy="0.000000714099129" ixz="0.000000035271876" iyy="0.001446440945625" iyz="0.000000220871060" izz="0.002501453294983"/>
+      </inertial>
+    </link>
+
+    <!-- camera_axis_aligned to camera joint -->
+    <joint name="${name}_camera_axis_aligned_to_${name}_camera" type="fixed">
+      <parent link="${name}_camera_axis_aligned"/>
+      <child link="${name}_camera"/>
+      <xacro:if value="${simulation == 'true'}">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      </xacro:if>
+      <xacro:unless value="${simulation == 'true'}">
+        <xacro:insert_block name="camera_calibration_tf"/>
+      </xacro:unless>
+    </joint>
+
+    <!-- Multisense camera link -->
+    <link name="${name}_camera"/>
+
+  </xacro:macro>
+
+
+</robot>

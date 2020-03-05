@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:property name="A_r_AM_x"       value= "0.000"/> <!-- [m] -->
+  <xacro:property name="A_r_AM_y"       value= "0.000"/> <!-- [m] -->
+  <xacro:property name="A_r_AM_z"       value="-0.228"/> <!-- [m] -->
+  <xacro:property name="q_AM_roll"      value= "0.226893"/> <!-- [rad] -->
+  <xacro:property name="q_AM_pitch"     value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_AM_yaw"       value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="A_r_AAcom_x"    value= "0.00000"/> <!-- [m] -->
+  <xacro:property name="A_r_AAcom_y"    value= "0.00360"/> <!-- [m] -->
+  <xacro:property name="A_r_AAcom_z"    value="-0.18036"/> <!-- [m] -->
+  <xacro:property name="m_A"            value= "0.261"/> <!-- [kg] -->
+  <xacro:property name="A_Ixx_A"        value= "0.002983"/> <!-- [kg * m^2] -->
+  <xacro:property name="A_Iyy_A"        value= "0.002980"/> <!-- [kg * m^2] -->
+  <xacro:property name="A_Izz_A"        value= "0.000084"/> <!-- [kg * m^2] -->
+  <xacro:property name="A_Ixy_A"        value= "0.00000003"/> <!-- [kg * m^2] -->
+  <xacro:property name="A_Ixz_A"        value="-0.00000032"/> <!-- [kg * m^2] -->
+  <xacro:property name="A_Iyz_A"        value="-0.000070"/> <!-- [kg * m^2] -->
+  <xacro:property name="collision_r_a"  value= "0.015"/>   <!-- [m] -->
+
+</robot>

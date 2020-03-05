@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Shank -->
+  <xacro:property name="S_r_SA_x"      value= "0.100"/> <!-- [m] -->
+  <xacro:property name="S_r_SA_y"      value="-0.020"/> <!-- [m] -->
+  <xacro:property name="S_r_SA_z"      value= "0.000"/> <!-- [m] -->
+  <xacro:property name="q_SA_roll"     value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_SA_pitch"    value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="q_SA_yaw"      value= "0.0"/> <!-- [rad] -->
+  <xacro:property name="S_r_SScom_x"   value= "0.029"/> <!-- [m] -->
+  <xacro:property name="S_r_SScom_y"   value="-0.004"/> <!-- [m] -->
+  <xacro:property name="S_r_SScom_z"   value= "0.001"/> <!-- [m] -->
+  <xacro:property name="m_S"           value= "0.210"/> <!-- [kg] -->
+  <xacro:property name="S_Ixx_S"       value= "0.003769371790899"/> <!-- [kg * m^2] -->
+  <xacro:property name="S_Iyy_S"       value= "0.004004464676349"/> <!-- [kg * m^2] -->
+  <xacro:property name="S_Izz_S"       value= "0.000418471691904"/> <!-- [kg * m^2] -->
+  <xacro:property name="S_Ixy_S"       value="-0.000077334500762"/> <!-- [kg * m^2] -->
+  <xacro:property name="S_Ixz_S"       value="-0.000152069372983"/> <!-- [kg * m^2] -->
+  <xacro:property name="S_Iyz_S"       value="-0.000321835608300"/> <!-- [kg * m^2] -->
+  <xacro:property name="collision_x_s" value= "0.08"/> <!-- [m] -->
+  <xacro:property name="collision_y_s" value= "0.07"/> <!-- [m] -->
+  <xacro:property name="collision_z_s" value= "0.13"/> <!-- [m] -->
+
+  <!-- Joint KFE -->
+  <xacro:property name="s_kfe_1" value="6.28"/> <!-- [rad] -->
+  <xacro:property name="s_kfe_2" value="6.28"/> <!-- [rad] -->
+  <xacro:property name="v_kfe" value="15"/> <!-- [rad/s] -->
+  <!-- This is the max. torque in freeze mode, torques for active control
+       modes are limited in `anymal_se_actuator_commands.hpp`. -->
+  <xacro:property name="t_kfe" value="80"/> <!-- [Nm] -->
+  <xacro:property name="d_kfe" value="0.0"/> <!-- [Nms/rad] -->
+  <xacro:property name="f_kfe" value="0.0"/> <!-- [Nm] -->
+
+</robot>

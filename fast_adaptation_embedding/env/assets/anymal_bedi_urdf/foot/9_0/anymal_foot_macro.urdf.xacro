@@ -1,0 +1,92 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Foot Version 9.0 with carbon adapter tube -->
+  <xacro:macro name="anymal_foot" params="leg:=^ mesh_name **properties">
+
+    <!-- Xacro:Properties -->
+    <xacro:insert_block name="properties"/>
+    <xacro:property name="left"  value="${int(leg.startswith('L'))*2-1}"/>
+    <xacro:property name="front" value="${int(leg.startswith('F', 1))*2-1}"/>
+
+    <!-- Shank to Adapter joint -->
+    <joint name="${leg}_SHANK_TO_ADAPTER" type="fixed">
+      <parent link="${leg}_SHANK"/>
+      <child link="${leg}_ADAPTER"/>
+      <origin xyz="${front*S_r_SA_x} ${left*S_r_SA_y} ${S_r_SA_z}"
+              rpy="${left*q_SA_roll} ${front*q_SA_pitch} ${left*front*q_SA_yaw}"/>
+    </joint>
+
+    <!-- Adapter link -->
+    <link name="${leg}_ADAPTER">
+      <xacro:if value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 ${mesh_adapter_z_offset}"
+                  rpy="0 0 ${(front-1)*0.5*PI}"/>
+          <geometry>
+            <mesh filename="${mesh_name}"
+                  scale="${anymal_meshes_scale}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 ${A_r_AF_z * 0.5}"
+                  rpy="0 0 0"/>
+          <geometry>
+            <cylinder radius="${collision_adapter_r}" length="${A_r_AF_z}"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin xyz="0 0 ${A_r_AF_z * 0.5}"
+                rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="${collision_adapter_r}" length="${A_r_AF_z}"/>
+        </geometry>
+        <material name="anymal_material" />
+      </collision>
+    </link>
+
+    <!-- Adapter to Foot joint -->
+    <joint name="${leg}_ADAPTER_TO_FOOT" type="fixed">
+      <parent link="${leg}_ADAPTER"/>
+      <child link="${leg}_FOOT"/>
+      <origin xyz="${front*A_r_AF_x} ${left*A_r_AF_y} ${A_r_AF_z}"
+              rpy="${left*q_AF_roll} ${front*q_AF_pitch} ${left*front*q_AF_yaw}"/>
+    </joint>
+
+    <!-- Foot link -->
+    <link name="${leg}_FOOT">
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 ${collision_foot_r*0.75}"/>
+          <geometry>
+            <sphere radius="${collision_foot_r}"/>
+          </geometry>
+          <material name="anymal_material"/>
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin xyz="0 0 ${collision_foot_r*0.75}"/>
+        <geometry>
+          <sphere radius="${collision_foot_r}"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- Gazebo customization -->
+    <gazebo reference="${leg}_FOOT">
+      <kp>${kp}</kp>
+      <kd>${kd}</kd>
+      <mu1>${mu}</mu1>
+      <mu2>${mu}</mu2>
+    </gazebo>
+
+  </xacro:macro>
+
+
+</robot>

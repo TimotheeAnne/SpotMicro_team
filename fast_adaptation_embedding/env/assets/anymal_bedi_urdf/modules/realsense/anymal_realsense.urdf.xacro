@@ -1,0 +1,373 @@
+<?xml version="1.0"?>
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- RealSense ZR300/D435 -->
+  <xacro:macro name="anymal_realsense" params="name:=realsense parent:=base side:=front model:=1 realsense:=zr300 mounted_angle_roll_degree mounted_angle_pitch_degree *mount_calibration_tf *camera_calibration_tf">
+
+    <xacro:property name="front" value="${int(side == 'front')*2-1}"/>
+
+    <!-- Module attachment -->
+    <joint name="${parent}_to_${name}_mount_axis_aligned" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}_mount_axis_aligned"/>
+      <origin xyz="${front*0.2692} 0.0 0.1569" rpy="0.0 0.0 ${(front-1)*0.5*PI}"/>
+    </joint>
+
+    <!-- Mount axis aligned link -->
+    <link name="${name}_mount_axis_aligned">
+      <xacro:if value="$(arg mesh)">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="package://anymal_description/urdf/modules/realsense/anymal_realsense_mount_${model}.dae" scale=".001 .001 .001"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:if>
+      <xacro:unless value="$(arg mesh)">
+        <visual>
+          <origin rpy="0 0 0" xyz="0.08 0.0 0.02"/>
+          <geometry>
+            <box size="0.168 0.195 0.04"/>
+          </geometry>
+          <material name="anymal_material" />
+        </visual>
+      </xacro:unless>
+      <collision>
+        <origin rpy="0 0 0" xyz="0.08 0.0 0.02"/>
+        <geometry>
+          <box size="0.168 0.195 0.04"/>
+        </geometry>
+        <material name="anymal_material" />
+      </collision>
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.001"/>
+        <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+      </inertial>
+    </link>
+
+    <!-- Mount calibration joint -->
+    <joint name="${name}_mount_axis_aligned_to_${name}_mount" type="fixed">
+      <parent link="${name}_mount_axis_aligned"/>
+      <child link="${name}_mount"/>
+      <xacro:if value="$(arg simulation)">
+        <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
+      </xacro:if>
+      <xacro:unless value="$(arg simulation)">
+        <xacro:insert_block name="mount_calibration_tf"/>
+      </xacro:unless>
+    </joint>
+
+    <!-- Mount link -->
+    <link name="${name}_mount">
+      <inertial>
+        <origin xyz="0.054218447194
+                    -0.000000283793
+                     0.020065663731"
+                rpy="0 0 0"/>
+        <mass value="0.243898067"/>
+        <inertia ixx="0.000779856566866"
+                 ixy="0.000000002160682"
+                 ixz="0.000147656791902"
+                 iyy="0.000570366165358"
+                 iyz="0.000000000478926"
+                 izz="0.001154870002255"/>
+      </inertial>
+    </link>
+
+    <!-- Mount tilting joint -->
+    <joint name="${name}_mount_to_${name}_mount_tilted" type="fixed">
+      <parent link="${name}_mount"/>
+      <child link="${name}_mount_tilted"/>
+      <xacro:if value="${model == 1}">
+        <origin xyz="0.102 0.0 0.006" rpy="${mounted_angle_roll_degree / 180.0 * PI} ${mounted_angle_pitch_degree / 180.0 * PI} 0.0"/>
+      </xacro:if>
+      <xacro:if value="${model == 2}">
+        <origin xyz="0.079 0.0 0.004724" rpy="${mounted_angle_roll_degree / 180.0 * PI} ${mounted_angle_pitch_degree / 180.0 * PI} 0.0"/>
+      </xacro:if>
+    </joint>
+
+    <!-- ZR300 -->
+    <xacro:if value="${realsense in ['zr300']}">
+
+      <!-- Mount tilted link -->
+      <link name="${name}_mount_tilted">
+        <xacro:if value="$(arg mesh)">
+          <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+              <mesh filename="package://anymal_description/urdf/modules/realsense/anymal_realsense_zr300_${model}.dae" scale=".001 .001 .001"/>
+            </geometry>
+            <material name="anymal_material" />
+          </visual>
+        </xacro:if>
+        <xacro:unless value="$(arg mesh)">
+          <visual>
+            <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+            <geometry>
+              <box size="0.110 0.125 0.064"/>
+            </geometry>
+            <material name="anymal_material" />
+          </visual>
+        </xacro:unless>
+        <collision>
+          <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+          <geometry>
+            <box size="0.110 0.125 0.064"/>
+          </geometry>
+          <material name="anymal_material" />
+        </collision>
+        <inertial>
+          <origin xyz="0.012067706335
+                       0.000034218329
+                      -0.018882513478"
+                  rpy="0 0 0"/>
+          <mass value="0.090013014"/>
+          <inertia ixx="0.000169207551154"
+                   ixy="0.000000009269426"
+                   ixz="0.000003597939425"
+                   iyy="0.000026942822119"
+                   iyz="0.000000000278764"
+                   izz="0.000162233731490"/>
+        </inertial>
+      </link>
+    </xacro:if> <!-- zr300 -->
+
+    <!-- D435 -->
+    <xacro:if value="${realsense in ['d435']}">
+
+      <!-- Mount tilted link -->
+      <link name="${name}_mount_tilted">
+        <xacro:if value="$(arg mesh)">
+          <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+              <mesh filename="package://anymal_description/urdf/modules/realsense/anymal_realsense_d435.dae" scale=".001 .001 .001"/>
+            </geometry>
+            <material name="anymal_material" />
+          </visual>
+        </xacro:if>
+        <xacro:unless value="$(arg mesh)">
+          <visual>
+            <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+            <geometry>
+              <box size="0.110 0.125 0.064"/>
+            </geometry>
+            <material name="anymal_material" />
+          </visual>
+        </xacro:unless>
+        <collision>
+          <origin rpy="0 0 0" xyz="-0.03 0.0 0.0"/>
+          <geometry>
+            <box size="0.110 0.125 0.064"/>
+          </geometry>
+          <material name="anymal_material" />
+        </collision>
+        <inertial>
+          <origin xyz="0.012067706335
+                       0.000034218329
+                      -0.018882513478"
+                  rpy="0 0 0"/>
+          <mass value="0.090013014"/>
+          <inertia ixx="0.000169207551154"
+                   ixy="0.000000009269426"
+                   ixz="0.000003597939425"
+                   iyy="0.000026942822119"
+                   iyz="0.000000000278764"
+                   izz="0.000162233731490"/>
+        </inertial>
+      </link>
+    </xacro:if> <!-- d435 -->
+    
+    <!-- Camera joint -->
+    <joint name="${name}_mount_tilted_to_${name}_camera_axis_aligned" type="fixed">
+      <parent link="${name}_mount_tilted"/>
+      <child link="${name}_camera_axis_aligned"/>
+      <xacro:if value="${model == 1}">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+      </xacro:if>
+      <xacro:if value="${model == 2}">
+        <xacro:if value="$(arg simulation)">
+          <origin xyz="0.038 0 -0.01112" rpy="0 0 0"/>
+        </xacro:if>
+        <xacro:unless value="$(arg simulation)">
+          <origin xyz="0.038 0.0125 -0.01112" rpy="0 0 0"/>
+        </xacro:unless>
+      </xacro:if>
+    </joint>
+
+    <!-- Camera axis aligned link -->
+    <link name="${name}_camera_axis_aligned"/>
+
+    <!-- Camera calibration joint -->
+    <joint name="${name}_camera_axis_aligned_to_${name}_camera" type="fixed">
+      <parent link="${name}_camera_axis_aligned"/>
+      <child link="${name}_camera"/>
+      <xacro:insert_block name="camera_calibration_tf"/>
+    </joint>
+    
+    <!-- ZR300 -->
+    <xacro:if value="${realsense in ['zr300']}">
+
+      <!-- Camera link -->
+      <link name="${name}_camera">
+        <inertial>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <mass value="0.001"/>
+          <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+        </inertial>
+      </link>
+
+      <!-- Simulation -->
+      <xacro:if value="$(arg simulation)">
+
+        <!-- IR optical frame joint -->
+        <joint name="${name}_camera_axis_aligned_to_${name}_ir_optical_frame" type="fixed">
+          <parent link="${name}_camera"/>
+          <child link="${name}_ir_optical_frame"/>
+          <origin xyz="0.0 0.0 0.0" rpy="-${PI / 2} 0.0 -${PI / 2}"/>
+        </joint>
+
+        <!-- IR optical frame link -->
+        <link name="${name}_ir_optical_frame">
+          <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <!-- Set the inertial parameters to neglectable values: these effects will be considered on a different rigid body -->
+            <mass value="0.001"/>
+            <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+          </inertial>
+        </link>
+
+        <!-- Gazebo plugin -->
+        <gazebo reference="${name}_camera">
+          <sensor type="depth" name="${name}_camera">
+            <always_on>1</always_on>
+            <visualize>true</visualize>
+            <camera>
+              <horizontal_fov>1.0297</horizontal_fov> <!-- 59 degrees -->
+              <image>
+                <width>640</width>
+                <height>480</height>
+                <format>R8G8B8</format>
+              </image>
+              <depth_camera>
+
+              </depth_camera>
+              <clip>
+                <near>0.1</near>
+                <far>10.0</far>
+              </clip>
+            </camera>
+            <plugin name="camera_controller" filename="libgazebo_ros_openni_kinect.so">
+              <alwaysOn>true</alwaysOn>
+              <updateRate>5.0</updateRate>
+              <cameraName>${name}</cameraName>
+              <frameName>${name}_ir_optical_frame</frameName>
+              <imageTopicName>rgb/image_raw</imageTopicName>
+              <depthImageTopicName>depth/image_raw</depthImageTopicName>
+              <pointCloudTopicName>points2</pointCloudTopicName>
+              <cameraInfoTopicName>rgb/camera_info</cameraInfoTopicName>
+              <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+              <pointCloudCutoff>0.4</pointCloudCutoff>
+              <hackBaseline>0.07</hackBaseline>
+              <distortionK1>0.0</distortionK1>
+              <distortionK2>0.0</distortionK2>
+              <distortionK3>0.0</distortionK3>
+              <distortionT1>0.0</distortionT1>
+              <distortionT2>0.0</distortionT2>
+              <CxPrime>0.0</CxPrime>
+              <Cx>0.0</Cx>
+              <Cy>0.0</Cy>
+              <focalLength>0.0</focalLength>
+            </plugin>
+          </sensor>
+        </gazebo>
+      </xacro:if> <!-- simulation -->
+    </xacro:if> <!-- zr300 -->
+
+    <!-- D435 -->
+    <xacro:if value="${realsense in ['d435']}">
+
+      <!-- Camera link -->
+      <link name="${name}_camera">
+        <inertial>
+          <!-- The following are not reliable values, and should not be used for modeling -->
+          <mass value="0.564" />
+          <origin xyz="0 0 0" />
+          <inertia ixx="0.003881243" ixy="0.0" ixz="0.0" iyy="0.000498940" iyz="0.0" izz="0.003879257" />
+        </inertial>
+      </link>
+
+      <!-- Depth optical frame joint -->
+      <joint name="${name}_camera_to_${name}_depth_optical_frame" type="fixed">
+        <parent link="${name}_camera"/>
+        <child link="${name}_depth_optical_frame"/>
+        <origin xyz="0.0 0.0 0.0" rpy="-${PI / 2} 0.0 -${PI / 2}"/>
+      </joint>
+
+      <!-- Depth optical frame link -->
+      <link name="${name}_depth_optical_frame">
+        <inertial>
+          <origin xyz="0 0 0" rpy="0 0 0"/>
+          <!-- Set the inertial parameters to neglectable values: these effects will be considered on a different rigid body -->
+          <mass value="0.001"/>
+          <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+        </inertial>
+      </link>
+
+      <!-- Simulation -->
+      <xacro:if value="$(arg simulation)">
+
+        <!-- Gazebo plugin -->
+        <gazebo reference="${name}_camera">
+          <sensor type="depth" name="${name}_camera">
+            <always_on>1</always_on>
+            <visualize>true</visualize>
+            <update_rate>6</update_rate>
+            <camera>
+              <horizontal_fov>1.5917</horizontal_fov> <!-- 91.2 degrees -->
+              <image>
+                <width>424</width>
+                <height>240</height>
+                <format>R8G8B8</format>
+              </image>
+              <depth_camera>
+
+              </depth_camera>
+              <clip>
+                <near>0.1</near>
+                <far>10.0</far>
+              </clip>
+            </camera>
+            <plugin name="camera_controller" filename="libgazebo_ros_openni_kinect.so">
+              <alwaysOn>true</alwaysOn>
+              <updateRate>0.0</updateRate>
+              <cameraName>${name}</cameraName>
+              <frameName>${name}_depth_optical_frame</frameName>
+              <imageTopicName>rgb/image_raw</imageTopicName>
+              <depthImageTopicName>depth/image_raw</depthImageTopicName>
+              <pointCloudTopicName>depth/color/points</pointCloudTopicName>
+              <cameraInfoTopicName>rgb/camera_info</cameraInfoTopicName>
+              <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+              <pointCloudCutoff>0.4</pointCloudCutoff>
+              <hackBaseline>0.07</hackBaseline>
+              <distortionK1>0.0</distortionK1>
+              <distortionK2>0.0</distortionK2>
+              <distortionK3>0.0</distortionK3>
+              <distortionT1>0.0</distortionT1>
+              <distortionT2>0.0</distortionT2>
+              <CxPrime>0.0</CxPrime>
+              <Cx>0.0</Cx>
+              <Cy>0.0</Cy>
+              <focalLength>0.0</focalLength>
+            </plugin>
+          </sensor>
+        </gazebo>
+      </xacro:if> <!-- simulation -->
+    </xacro:if> <!-- d435 -->
+
+  </xacro:macro>
+
+</robot>
