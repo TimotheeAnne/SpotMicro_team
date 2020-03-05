@@ -1,0 +1,9 @@
+__pycache__/
+*.npy
+*.txt
+*.pickle
+*.mp4
+*meta.json
+results/
+data/
+*.pt
