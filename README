@@ -1,0 +1,11 @@
+# SpotMicro
+
+## Installation
+
+### Require
+gym
+pybullet
+tqdm
+pytorch
+pyprind
+pynput
