@@ -62,12 +62,20 @@ class SpotMicroEnv(gym.Env):
         self.mismatch = None
         self.shoulder_to_knee = 0.2
         self.knee_to_foot = 0.1
-        self.init_joint = self.from_leg_to_motor([0, -0.2, 0.25]*4)
+        self.init_joint = self.from_leg_to_motor([0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2)
+        print(self.init_joint)
         self.fc = 10
         self.C = 1/(np.tan(np.pi*self.fc*self.fixedTimeStep))
         self.A = 1/(1+self.C)
         assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
-        self.control_mode = action_space
+        self.action_space = action_space
+        if self.action_space == "Motor":
+            self.ub = np.array([0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2)  # [0.02, -0.45, 1.65] max [0.548, 1.548, 2.59]
+            self.lb = np.array([0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2)  # [-0.09, -1.2, 1.2] min [-0.548, -2.666, -0.1]
+        elif self.action_space == "S&E":
+            """ abduction - swing - extension"""
+            self.ub = np.array([0.2, 0.4, 0.25] * 4)  # [0.2, 0.4, 0.25]
+            self.lb = np.array([-0.2, -0.6, 0.2] * 4)  # [-0.2, -0.6, 0.2]
         if self.is_render:
             self.pybullet_client = bullet_client.BulletClient(connection_mode=p.GUI)
         else:
@@ -111,7 +119,7 @@ class SpotMicroEnv(gym.Env):
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
         p.setGravity(0, 0, -9.81)
 
-        orn = p.getQuaternionFromEuler([math.pi / 30 * 0, 0 * math.pi / 50, 0])
+        orn = p.getQuaternionFromEuler([0, 0, 0])
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         planeUid = p.loadURDF("plane_transparent.urdf", [0, 0, 0], orn)
         p.changeDynamics(planeUid, -1, lateralFriction=1)
@@ -126,7 +134,6 @@ class SpotMicroEnv(gym.Env):
                                flags=flags)
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         p.changeDynamics(quadruped, -1, lateralFriction=0.8)
-
         return quadruped
 
     def reset(self):
@@ -198,15 +205,9 @@ class SpotMicroEnv(gym.Env):
     def step(self, action):
 
         a = np.copy(action)
-        if self.control_mode == "Motor":
-            ub = np.array([0.2, -0.4, 1.5] * 4)  # [0.548, 1.548, 2.59]
-            lb = np.array([-0.2, -0.8, 1] * 4)  # [-0.548, -2.666, -0.1]
-            a = a*(ub-lb)/2+(ub+lb)/2
-        elif self.control_mode == "S&E":
+        a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
+        if self.action_space == "S&E":
             """ abduction - swing - extension"""
-            ub = np.array([0.2, 0.4, 0.25] * 4)  # [0.2, 0.4, 0.25]
-            lb = np.array([-0.2, -0.6, 0.2] * 4)  # [-0.2, -0.6, 0.2]
-            a = a*(ub-lb)/2+(ub+lb)/2
             a = self.from_leg_to_motor(a)
 
         for _ in range(self.action_repeat):
@@ -251,16 +252,33 @@ class SpotMicroEnv(gym.Env):
         self._past_velocity = np.copy([x, y])
         return y
 
+    def get_body_xyz(self):
+        bodyPos, _ = p.getBasePositionAndOrientation(self.quadruped)
+        return bodyPos
+
+    def get_body_rpy(self):
+        _, bodyOrn = p.getBasePositionAndOrientation(self.quadruped)
+        bodyOrn = p.getEulerFromQuaternion(bodyOrn)
+        yaw = bodyOrn[2]+np.pi
+        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw <= np.pi else yaw-2*np.pi]
+        return bodyOrn
+
+    def get_linear_velocity(self):
+        linearVel, _ = p.getBaseVelocity(self.quadruped)
+        return linearVel
+
+    def get_angular_velocity(self):
+        _, angularVel = p.getBaseVelocity(self.quadruped)
+        return angularVel
+
     def get_obs(self):
         Obs = []
-        bodyPos, bodyOrn = p.getBasePositionAndOrientation(self.quadruped)
-        linearVel, angularVel = p.getBaseVelocity(self.quadruped)
         Obs.extend(self.GetMotorAngles().tolist())
         Obs.extend(self.GetMotorVelocities().tolist())
-        Obs.extend(p.getEulerFromQuaternion(bodyOrn))
-        Obs.extend(angularVel)
-        Obs.extend(linearVel[:2])  # x and y velocity
-        Obs.extend(bodyPos[2:3])  # z height
+        Obs.extend(self.get_body_rpy())
+        Obs.extend(self.get_angular_velocity())
+        Obs.extend(self.get_linear_velocity()[:2])  # x and y velocity
+        Obs.extend(self.get_body_xyz()[2:3])  # z height
         return Obs
 
     def get_reward(self):
@@ -374,11 +392,12 @@ if __name__ == "__main__":
     import fast_adaptation_embedding.env
     from tqdm import tqdm
     from gym.wrappers.monitoring.video_recorder import VideoRecorder
+    import matplotlib.pyplot as plt
 
     render = True
     # render = False
 
-    on_rack = 1
+    on_rack = 0
 
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -391,11 +410,11 @@ if __name__ == "__main__":
     ub = 1
     lb = -1
 
-    past = np.array([[0, -0.2, 1]*4]*3) if env.action_space == ["S&E"] else np.array([[0, 0, 0]*4]*3)
+    past = [(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb)]*3
     max_vel, max_acc, max_jerk = 10, 100, 10000
     dt = 0.02
 
-    degree = 0
+    degree = 3
     for i in tqdm(range(3, 500+3)):
         if recorder is not None:
             recorder.capture_frame()
@@ -403,6 +422,18 @@ if __name__ == "__main__":
         if degree == 0:
             amax = [ub]*12
             amin = [lb]*12
+        elif degree == 1:
+            amax = past[i - 1] + max_vel * dt
+            amin = past[i - 1] - max_vel * dt
+            amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
+        elif degree == 2:
+            amax = np.min((past[i - 1] + max_vel * dt,
+                           2 * past[i - 1] - past[i - 2] + max_acc * dt ** 2),
+                          axis=0)
+            amin = np.max((past[i - 1] - max_vel * dt,
+                           2 * past[i - 1] - past[i - 2] - max_acc * dt ** 2),
+                          axis=0)
+            amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
         else:
             amax = np.min((past[i - 1] + max_vel * dt,
                            2 * past[i - 1] - past[i - 2] + max_acc * dt ** 2,
@@ -414,8 +445,8 @@ if __name__ == "__main__":
                           axis=0)
             amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
         x = np.random.uniform(amin, amax)
+        # x = past[-1]
         action = np.copy(x)
-
         obs, reward, done, info = env.step(action)
         past = np.append(past, [np.copy(x)], axis=0)
         if done:
