@@ -78,7 +78,7 @@ class SpotMicroEnv(gym.Env):
         self.fc = 10
         self.C = 1/(np.tan(np.pi*self.fc*self.fixedTimeStep))
         self.A = 1/(1+self.C)
-        self._inspection = inspection
+        self.inspection = inspection
         assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
         self.action_space = action_space
         if (ub is not None) and (lb is not None):
