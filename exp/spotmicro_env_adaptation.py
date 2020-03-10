@@ -353,6 +353,8 @@ def execute_online(env, model, config, pred_high, pred_low, K):
         if key == Key.esc:
             return False
 
+    config['max_action_velocity'], config['max_action_acceleration'], config['max_action_jerk'] = 20, 100, 10000
+
     IDvd = env.pybullet_client.addUserDebugParameter("Desired velocity", -0.5, 0.5, 1)
     IDcontrol = env.pybullet_client.addUserDebugParameter("Random - MPC", 0, 1, 1)
     IDsmooth = env.pybullet_client.addUserDebugParameter("Smooth", 0, 1, 1)
@@ -703,7 +705,7 @@ config = {
     "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
-    "test_iterations": 1,
+    "test_iterations": 20,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
@@ -729,7 +731,7 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_03",
@@ -739,7 +741,7 @@ config = {
     "dump_trajects": 1,
     "data_dir": "",
     "logdir": None,
-    "pretrained_model": "/home/timothee/Documents/SpotMicro_team/exp/results/spot_micro_03/09_03_2020_16_04_23_action_bounds/run_0",
+    "pretrained_model": None,
 
     # Ensemble model params
     "cuda": True,
@@ -825,11 +827,13 @@ for (key, val) in arguments.config:
 
 mismatches = np.array([
     [0.25],
+    [-0.75]
 ])
 
 # test_mismatches = None
 test_mismatches = [
     [0.25],
+    [-0.75]
 ]
 
 config['test_mismatches'] = test_mismatches
@@ -885,8 +889,8 @@ def env_args_from_config(config):
     }
 
 
-# online = False
-online = True
+online = False
+# online = True
 
 if online:
     config["xreward"] = 1
