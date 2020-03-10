@@ -133,8 +133,8 @@ class Cost(object):
                 model_input = torch.cat((start_states, actions), dim=1)
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
-                x_vel_cost = (start_states[:, -3] - self.__desired_speed) ** 2 * self.__xreward
-                z_cost = (start_states[:, -1] - 0.21) ** 2 * self.__zreward
+                x_vel_cost = (start_states[:, 30] - self.__desired_speed) ** 2 * self.__xreward
+                # z_cost = (start_states[:, -1] - 0.21) ** 2 * self.__zreward
                 roll_cost = (start_states[:, 24]) ** 2 * self.__rollreward
                 pitch_cost = (start_states[:, 25]) ** 2 * self.__pitchreward
                 yaw_cost = (start_states[:, 26]) ** 2 * self.__yawreward
@@ -173,12 +173,8 @@ class Cost(object):
                                                      + -torch.exp(-yaw_cost) * self.__discount ** h \
                                                      + -torch.exp(-pitch_cost) * self.__discount ** h \
                                                      + -torch.exp(-roll_cost) * self.__discount ** h \
-                                                     + -torch.exp(-z_cost) * self.__discount ** h
-                # all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) \
-                #                                      * torch.exp(-yaw_cost)  \
-                #                                      * torch.exp(-pitch_cost)  \
-                #                                      * torch.exp(-roll_cost)  \
-                #                                      * torch.exp(-z_cost) * self.__discount ** h
+                                                     # + -torch.exp(-z_cost) * self.__discount ** h
+
         if self.__hard_smoothing:
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
         else:
@@ -226,7 +222,7 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
     recorder = None
     # recorder = VideoRecorder(env, config['logdir'] + "/videos/random_"+str(index_iter)+".mp4")
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
-    past = np.zeros((3, 12))
+    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
     for i in range(3, steps + 3):
         if config['hard_smoothing']:
             amax = np.min((past[i - 1] + max_vel, 2 * past[i - 1] - past[i - 2] + max_acc,
@@ -290,7 +286,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     model_error = 0
     sliding_mean = np.zeros(config["sol_dim"])
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
-    past = np.zeros((3, 12))
+    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
@@ -325,7 +321,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
-    # print("Model error: ", model_error)
+
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))
     samples['reward'].append(np.copy(reward))
@@ -333,6 +329,100 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     samples['desired_torques'].append(np.copy(desired_torques))
     samples['observed_torques'].append(np.copy(observed_torques))
     return np.array(trajectory), traject_cost
+
+
+def execute_online(env, model, config, pred_high, pred_low, K):
+    current_state = env.reset()
+
+    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+    event = [None]
+    max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
+                                                  config['max_action_jerk'], config['max_torque_jerk']
+    lb, ub = config['lb'], config['ub']
+
+    def on_press(key):
+        if key == Key.left:
+            env.reset()
+            past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+        elif key == Key.right:
+            event[0] = None
+        elif key == Key.down:
+            event[0] = 'pause'
+
+    def on_release(key):
+        if key == Key.esc:
+            return False
+
+    IDvd = env.pybullet_client.addUserDebugParameter("Desired velocity", -0.5, 0.5, 1)
+    IDcontrol = env.pybullet_client.addUserDebugParameter("Random - MPC", 0, 1, 1)
+    IDsmooth = env.pybullet_client.addUserDebugParameter("Smooth", 0, 1, 1)
+    IDpopsize = env.pybullet_client.addUserDebugParameter("population size (10^x)", 0, 5, 4)
+    IDhorizon = env.pybullet_client.addUserDebugParameter("Horizon", 1, 50, 25)
+    # Collect events until released
+    listener = Listener(on_press=on_press, on_release=on_release)
+    listener.start()
+
+    t = trange(500, desc='', leave=True)
+    # while True:
+    for _ in t:
+        if event[0] != 'pause':
+            vd = env.pybullet_client.readUserDebugParameter(IDvd)
+            env.set_desired_speed(vd)
+            MPC = env.pybullet_client.readUserDebugParameter(IDcontrol) > 0
+            smooth = env.pybullet_client.readUserDebugParameter(IDsmooth) > 0
+            popsize = env.pybullet_client.readUserDebugParameter(IDpopsize)
+            horizon = env.pybullet_client.readUserDebugParameter(IDhorizon)
+            config['popsize'] = int(10**popsize)
+            config['horizon'] = int(horizon)
+            config['sol_dim'] = config['horizon'] * config['action_dim']
+            config['hard_smoothing'] = smooth
+
+            MPC = True
+            smooth = True
+            if MPC:
+                virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
+                cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
+                                   action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
+                                   pred_low=pred_low, config=config, last_action=virtual_acs, speed=vd)
+
+                config["cost_fn"] = cost_object.cost_fn
+                optimizer = RS_opt(config)
+
+                sol = optimizer.obtain_solution(acs=virtual_acs)
+                x = sol[0:env.action_space.shape[0]]
+                a = np.copy(x)
+            else:
+                if smooth:
+                    amax = np.min((past[- 1] + max_vel, 2 * past[- 1] - past[- 2] + max_acc,
+                                   3 * past[- 1] - 3 * past[- 2] + past[- 3] + max_jerk), axis=0)
+                    amin = np.max((past[- 1] - max_vel, 2 * past[- 1] - past[- 2] - max_acc,
+                                   3 * past[- 1] - 3 * past[- 2] + past[- 3] - max_jerk), axis=0)
+                    amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
+                    x = np.random.uniform(amin, amax)
+                    a = np.copy(x)
+                else:
+                    x = np.random.random(12)*2-1
+                    a = np.copy(x)
+
+            if not MPC:
+                txt = "Random"
+            elif vd < 0:
+                txt = "Backward"
+            elif vd == 0:
+                txt = "Stationary"
+            elif vd > 0:
+                txt = "Forward"
+
+            base_pos = env.get_body_xyz()
+            t.set_description(" Distance " + str(int(100 * base_pos[0]) / 100))
+            # env.pybullet_client.addUserDebugText(txt, base_pos + np.array([0, 0, 0.2]), [0, 0, 0], 4, 0.04)
+            for k in range(K):
+                obs, rew, done, info = env.step(a)
+            past = np.append(past, [np.copy(x)], axis=0)
+            current_state = obs
+            if done:
+                env.reset()
+                past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
 
 
 def test_model(ensemble_model, init_state, action, state_diff, to_print=False):
@@ -385,7 +475,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     models = n_task * [None]
     best_action_seq = np.random.rand(config["sol_dim"]) * 2.0 - 1.0
     best_cost = 10000
-    last_action_seq = None
     all_action_seq = []
     all_costs = []
     traj_obs, traj_acs, traj_reward, traj_rewards = [[] for _ in range(n_task)], [[] for _ in range(n_task)], \
@@ -434,7 +523,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 data[env_index] = trajectory
             else:
                 data[env_index] = np.concatenate((data[env_index], trajectory), axis=0)
-            # print("Cost : ", c)
 
             if c < best_cost:
                 best_cost = c
@@ -488,7 +576,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         if (len(samples['reward'][0])) == config['episode_length']:
             best_reward = max(best_reward, np.sum(samples["reward"]))
-        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * config['ctrl_time_step'])
+        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * config['ctrl_time_step'])
         t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
             -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
         t.refresh()
@@ -514,6 +602,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
     for env_index in range(n_task):
         os.makedirs(res_dir + "/models/ensemble_"+str(env_index))
+        test_model(models[env_index], init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
         models[env_index].save(file_path=res_dir+"/models/ensemble_"+str(env_index)+"/")
 
     if config['test_mismatches'] is not None:
@@ -524,7 +613,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                                                         [[] for _ in range(n_task)], [[] for _ in range(n_task)]
         traj_observed_torques, traj_desired_torques = [[] for _ in range(n_task)], [[] for _ in range(n_task)]
         best_reward, best_distance = -np.inf, -np.inf
-
+        gym_kwargs['render'] = True
         envs = [gym.make(*gym_args, **gym_kwargs) for i in range(n_task)]
         for i, e in enumerate(envs):
             e.set_mismatch(test_mismatches[i])
@@ -574,7 +663,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
-            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * 0.02)
+            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * 0.02)
             t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                 -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
             t.refresh()
@@ -590,144 +679,45 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 }, f)
 
 
-def execute_online(env, steps, model, config, pred_high, pred_low, K):
-    current_state = env.reset()
-    past = np.zeros((3, 8))
-    event = [None]
-    max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
-                                                  config['max_action_jerk'], config['max_torque_jerk']
-    lb, ub = config['lb'], config['ub']
-
-    def on_press(key):
-        if key == Key.left:
-            env.reset()
-            past[:3] = np.zeros((3, 8))
-        elif key == Key.right:
-            event[0] = None
-        elif key == Key.down:
-            event[0] = 'pause'
-
-    def on_release(key):
-        if key == Key.esc:
-            return False
-
-    IDvd = env.pybullet_client.addUserDebugParameter("Desired velocity", -0.5, 0.5, 1)
-    IDcontrol = env.pybullet_client.addUserDebugParameter("Random - MPC", 0, 1, 1)
-    IDsmooth = env.pybullet_client.addUserDebugParameter("Smooth", 0, 1, 1)
-    IDpopsize = env.pybullet_client.addUserDebugParameter("population size (10^x)", 0, 5, 2)
-    IDhorizon = env.pybullet_client.addUserDebugParameter("Horizon", 1, 50, 25)
-    IDorientation = env.pybullet_client.addUserDebugParameter("orientation", -180, 180, 0)
-    # Collect events until released
-    listener = Listener(on_press=on_press, on_release=on_release)
-    listener.start()
-    while True:
-        if event[0] != 'pause':
-            vd = env.pybullet_client.readUserDebugParameter(IDvd)
-            env.set_desired_speed(vd)
-            MPC = env.pybullet_client.readUserDebugParameter(IDcontrol) > 0
-            smooth = env.pybullet_client.readUserDebugParameter(IDsmooth) > 0
-            popsize = env.pybullet_client.readUserDebugParameter(IDpopsize)
-            horizon = env.pybullet_client.readUserDebugParameter(IDhorizon)
-            yaw = env.pybullet_client.readUserDebugParameter(IDorientation)
-            config['popsize'] = int(10**popsize)
-            config['horizon'] = int(horizon)
-            config['sol_dim'] = config['horizon'] * config['action_dim']
-            config['hard_smoothing'] = smooth
-            env.set_init_orientation(env.pybullet_client.getQuaternionFromEuler([0, 0, yaw*np.pi/180]))
-            if MPC:
-                virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
-                cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                                   action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
-                                   pred_low=pred_low, config=config, last_action=virtual_acs, speed=vd)
-
-                config["cost_fn"] = cost_object.cost_fn
-                optimizer = RS_opt(config)
-
-                sol = optimizer.obtain_solution(acs=virtual_acs)
-                x = sol[0:env.action_space.shape[0]]
-                a = np.copy(x)
-            else:
-                if smooth:
-                    amax = np.min((past[- 1] + max_vel, 2 * past[- 1] - past[- 2] + max_acc,
-                                   3 * past[- 1] - 3 * past[- 2] + past[- 3] + max_jerk), axis=0)
-                    amin = np.max((past[- 1] - max_vel, 2 * past[- 1] - past[- 2] - max_acc,
-                                   3 * past[- 1] - 3 * past[- 2] + past[- 3] - max_jerk), axis=0)
-                    amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
-                    x = np.random.uniform(amin, amax)
-                    a = np.copy(x)
-                else:
-                    x = np.random.random(8)*2-1
-                    a = np.copy(x)
-            if config['action_space'] == "Torque2":
-                a[:4] = a[:4] * 0.6
-                a[4:] = (a[4:] * 0.4 + 0.5) * 0.75 + 0.10
-                a = env.minitaur.ConvertFromLegModel(a)
-                a = 8 * (a - env.minitaur.GetMotorAngles())
-            elif config['action_space'] == "velocity2":
-                a[:4] = a[:4] * 0.6
-                a[4:] = (a[4:] * 0.4 + 0.5) * 0.75 + 0.10
-                a = env.minitaur.ConvertFromLegModel(a)
-                a = (a - env.minitaur.GetMotorAngles())
-            elif config['action_space'] == "Motor2":
-                a[:4] = a[:4] * 0.6
-                a[4:] = (a[4:] * 0.4 + 0.5) * 0.75 + 0.10
-                a = env.minitaur.ConvertFromLegModel(a) - 1.5
-
-            if not MPC:
-                txt = "Random"
-            elif vd < 0:
-                txt = "Backward"
-            elif vd == 0:
-                txt = "Stationary"
-            elif vd > 0:
-                txt = "Forward"
-            base_pos = env.minitaur.GetBasePosition()
-            env.pybullet_client.addUserDebugText(txt, base_pos + np.array([0, 0, 0.2]), [0, 0, 0], 4, 0.04)
-            for k in range(K):
-                obs, rew, done, info = env.step(a)
-            past = np.append(past, [np.copy(x)], axis=0)
-            if done:
-                env.reset()
-                past = np.zeros((3, 8))
-
-
 def online_test(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
     assert config['pretrained_model'] is not None, "must give an existing logdir"
     res_dir = config['pretrained_model']
     device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
     models = load_model(res_dir+"/models/ensemble_0/", device=device)
-    # test_model(models, np.zeros(25), np.zeros(8), np.zeros(25), True)
+    test_model(models, init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
     gym_kwargs['render'] = True
     env = gym.make(*gym_args, **gym_kwargs)
     env.set_mismatch(mismatches[0])
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
     env.render("human")
-    execute_online(env=env, model=models, steps=config["episode_length"], config=config, pred_high=None, pred_low=None, K=config['K'])
+    execute_online(env=env, model=models, config=config, pred_high=None, pred_low=None, K=config['K'])
 
 ################################################################################
 
 
 config = {
     # exp parameters:
-    "horizon": 1,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 2,
-    "random_episodes": 1,  # per task
-    "episode_length": 50,  # number of times the controller is updated
+    "horizon": 25,  # NOTE: "sol_dim" must be adjusted
+    "iterations": 300,
+    "random_episodes": 25,  # per task
+    "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
-    "test_iterations": 0,
+    "test_iterations": 1,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
-    "action_space": ['S&E', 'Motor'][1],
+    "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
+    "init_joint": None,
+    "real_ub": None,
+    "real_lb": None,
     "partial_torque_control": 0,
     "vkp": 0,
-    # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "desired_speed": 0.8,
+    "desired_speed": 0.5,
     "xreward": 1,
-    "zreward": 1,
+    "zreward": 0,
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
@@ -736,7 +726,7 @@ config = {
     "action_acc_weight": 0,  # 0.05 seems working
     "action_jerk_weight": 0,  # 0.05 seems working
     "soft_smoothing": 0,
-    "hard_smoothing": 0,
+    "hard_smoothing": 1,
 
     # logging
     "record_video": 0,
@@ -749,13 +739,13 @@ config = {
     "dump_trajects": 1,
     "data_dir": "",
     "logdir": None,
-    "pretrained_model": None,
+    "pretrained_model": "/home/timothee/Documents/SpotMicro_team/exp/results/spot_micro_03/09_03_2020_16_04_23_action_bounds/run_0",
 
     # Ensemble model params
     "cuda": True,
     "ensemble_epoch": 5,
-    "ensemble_dim_in": 33 + 12,
-    "ensemble_dim_out": 33,
+    "ensemble_dim_in": 32 + 12,
+    "ensemble_dim_out": 32,
     "ensemble_hidden": [256, 256],
     "hidden_activation": "relu",
     "ensemble_cuda": True,
@@ -773,7 +763,7 @@ config = {
     "ub": 1,
     "max_action_velocity": 10,  # 10 from working controller
     "max_action_acceleration": 100,  # 100 from working controller
-    "max_action_jerk": 1000,  # 1000 from working controller
+    "max_action_jerk": 10000,  # 10000 from working controller
     "max_torque_jerk": 25,
     "popsize": 10000,
     "sol_dim": None,  # NOTE: Depends on Horizon
@@ -834,14 +824,13 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [0., 0., 0],
+    [0.25],
 ])
 
-test_mismatches = None
-# test_mismatches = [
-#     [0., 0., 0],
-#     [0., -0.8, 0],
-# ]
+# test_mismatches = None
+test_mismatches = [
+    [0.25],
+]
 
 config['test_mismatches'] = test_mismatches
 
@@ -849,12 +838,24 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-# config['exp_suffix'] = "without_Z"
+# config['exp_suffix'] = "action_bounds"
 # config_params = []
-# # popsize = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
-# for i in range(1):
-#     for _ in range(10):
+#
+# action_space = [
+#     ("Motor", [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2, [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2, [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2),
+#     ("Motor", [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2, [0.4, -0., 1.65] * 4, [-0.1, -1.2, 1.2] * 4),
+#     ("Motor", [0.2, 0.1, 0.25]*4, [0.3, 0.5, 2] * 4, [-0.3, -1.5, 1.] * 4),
+#     ("Motor", [0.2, 0.1, 0.25] * 4, [0.548, 1.548, 2.59] * 4, [-0.548, -2.666, -0.1] * 4),
+# ]
+
+# for i in range(len(action_space)):
+#     for _ in range(2):
+#         (AS, init_joint, ub, lb) = action_space[i]
 #         config_params.append({
+#             'real_ub': ub,
+#             'real_lb': lb,
+#             'init_joint': init_joint,
+#             'action_space': AS
 #         })
 
 
@@ -877,25 +878,31 @@ def env_args_from_config(config):
         'action_vel_weight': config["action_vel_weight"],
         'action_acc_weight': config["action_acc_weight"],
         'action_jerk_weight': config["action_jerk_weight"],
+        'on_rack': False,
+        "init_joint": config["init_joint"],
+        "ub": config["real_ub"],
+        "lb": config["real_lb"],
     }
 
 
-online = False
-# online = True
+# online = False
+online = True
 
 if online:
     config["xreward"] = 1
-    config["zreward"] = 0
-    config["rollreward"] = 0
-    config["pitchreward"] = 0
-    config["yawreward"] = 0
-    config["popsize"] = 100
-    path = "/home/timothee/Documents/LARSEN/fast_adaptation_embedding/exp/results/"
-    directory = ['03_03_2020_10_15_03_experiment', '03_03_2020_11_54_28_experiment'][0]
+    config["rollreward"] = 1
+    config["pitchreward"] = 1
+    config["yawreward"] = 1
+    # config["init_joint"] = [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2
+    # config["real_ub"] = [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2
+    # config["real_lb"] = [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2
+    path = "/home/timothee/Documents/SpotMicro_team/exp/results/"
+    directory = ['09_03_2020_12_03_21_experiment', '09_03_2020_16_04_23_action_bounds'][1]
     config['pretrained_model'] = path + config['env_name'] + "/"+directory+"/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
-    online_test(gym_args=args, gym_kwargs=kwargs, mismatches=mismatches, config=config)
+    online_mismatches = [[0.25]]
+    online_test(gym_args=args, gym_kwargs=kwargs, mismatches=online_mismatches, config=config)
 else:
     n_run = 1 if config_params is None else len(config_params)
     if n_run == 1:
