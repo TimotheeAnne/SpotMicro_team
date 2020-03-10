@@ -65,19 +65,22 @@ class SpotMicroEnv(gym.Env):
         self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
-        self.kp = 0.045
-        self.kd = .4
+        self.kp = 8  # 0.045
+        self.kd = 0.5  # 0.4
         self.maxForce = 12.5
         self._motor_direction = [-1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1]
         self.mismatch = [0]
         self.shoulder_to_knee = 0.2
         self.knee_to_foot = 0.1
-        self.init_joint = self.from_leg_to_motor([0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2) if init_joint is None else self.from_leg_to_motor(init_joint)
+        if init_joint is None:
+            # init_joint = [0.2, 0.2, 0.25] * 2 + [0, -0.1, 0.25] * 2
+            init_joint = [0.5, 0., 0.25] * 4
+        self.init_joint = self.from_leg_to_motor(init_joint)
         self.lateral_friction = 0.8
         self.urdf_model = urdf_model
         self.fc = 10
-        self.C = 1/(np.tan(np.pi*self.fc*self.fixedTimeStep))
-        self.A = 1/(1+self.C)
+        self.C = 1 / (np.tan(np.pi * self.fc * self.fixedTimeStep))
+        self.A = 1 / (1 + self.C)
         self.inspection = inspection
         assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
         self.action_space = action_space
@@ -85,8 +88,10 @@ class SpotMicroEnv(gym.Env):
             self.ub = np.array(ub)
             self.lb = np.array(lb)
         elif self.action_space == "Motor":
-            self.ub = np.array([0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2)  # [0.02, -0.45, 1.65] max [0.548, 1.548, 2.59]
-            self.lb = np.array([0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2)  # [-0.09, -1.2, 1.2] min [-0.548, -2.666, -0.1]
+            self.ub = np.array(
+                [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2)  # [0.02, -0.45, 1.65] max [0.548, 1.548, 2.59]
+            self.lb = np.array(
+                [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2)  # [-0.09, -1.2, 1.2] min [-0.548, -2.666, -0.1]
         elif self.action_space == "S&E":
             """ abduction - swing - extension"""
             self.ub = np.array([0.2, 0.4, 0.25] * 4)  # [0.2, 0.4, 0.25]
@@ -101,7 +106,7 @@ class SpotMicroEnv(gym.Env):
 
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
-        self. _BuildMotorIdList()
+        self._BuildMotorIdList()
         self.jointNameToId = self.getJointNames(self.quadruped)
         self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations)
         self.pybullet_client.resetDebugVisualizerCamera(1, 85.6, 0, [-0.61, 0.12, 0.25])
@@ -138,11 +143,11 @@ class SpotMicroEnv(gym.Env):
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
         urdf_model = 'spotmicroai_sphere_feet.xml' if self.urdf_model == 'sphere' else 'spotmicroai_gen.urdf.xml'
-        quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/"+ urdf_model, self.init_position,
-                               self.init_oritentation,
-                               useFixedBase=self.useFixeBased,
-                               useMaximalCoordinates=False,
-                               flags=flags)
+        quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/" + urdf_model, self.init_position,
+                                                  self.init_oritentation,
+                                                  useFixedBase=self.useFixeBased,
+                                                  useMaximalCoordinates=False,
+                                                  flags=flags)
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         return quadruped
 
@@ -155,12 +160,28 @@ class SpotMicroEnv(gym.Env):
             reinit_pos = [0, 0, 0.5]
         self.pybullet_client.resetBasePositionAndOrientation(self.quadruped, reinit_pos, self.init_oritentation)
         self.pybullet_client.resetBaseVelocity(self.quadruped, [0, 0, 0], [0, 0, 0])
+
         for _ in range(40):
-            self.apply_action(self.init_joint)
+            self.pybullet_client.setJointMotorControlArray(
+                self.quadruped,
+                self._motor_id_list,
+                self.pybullet_client.POSITION_CONTROL,
+                targetPositions=np.multiply(self.init_joint, self._motor_direction),
+                forces=np.ones(12) * 1000
+            )
+            self.pybullet_client.stepSimulation()
+        p.setJointMotorControlArray(
+            self.quadruped,
+            self._motor_id_list,
+            p.POSITION_CONTROL,
+            targetPositions=np.zeros(12),
+            forces=np.zeros(12)
+        )
+
         self.pybullet_client.resetBasePositionAndOrientation(self.quadruped, init_pos, self.init_oritentation)
         self.pybullet_client.resetBaseVelocity(self.quadruped, [0, 0, 0], [0, 0, 0])
         self.t = 0
-        self._past_velocity = [[0]*12]*2
+        self._past_velocity = [[0] * 12] * 2
         return self.get_obs()
 
     def render(self, mode="rgb_array", close=False):
@@ -170,7 +191,7 @@ class SpotMicroEnv(gym.Env):
         base_pos = bodyPos
 
         if self.inspection:
-            base_pos = base_pos[0],  base_pos[1],  base_pos[2]-0.1,
+            base_pos = base_pos[0], base_pos[1], base_pos[2] - 0.1,
             view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
                 cameraTargetPosition=base_pos,
                 distance=-0.4,
@@ -188,9 +209,9 @@ class SpotMicroEnv(gym.Env):
                 upAxisIndex=1)
 
         proj_matrix = self.pybullet_client.computeProjectionMatrixFOV(fov=60,
-                                                   aspect=float(RENDER_WIDTH)/RENDER_HEIGHT,
-                                                   nearVal=0.1,
-                                                   farVal=100.0)
+                                                                      aspect=float(RENDER_WIDTH) / RENDER_HEIGHT,
+                                                                      nearVal=0.1,
+                                                                      farVal=100.0)
         (_, _, px, _, _) = self.pybullet_client.getCameraImage(
             width=RENDER_WIDTH,
             height=RENDER_HEIGHT,
@@ -253,24 +274,38 @@ class SpotMicroEnv(gym.Env):
         (xr, yr, _) = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
         return abs(xr) > math.pi / 3 or abs(yr) > math.pi / 3
 
-    def apply_action(self, action):
+    def apply_action(self, action, init=False):
         self.t = self.t + self.fixedTimeStep
         action = np.multiply(action, self._motor_direction)
-        for lx, leg in enumerate(['front_left', 'front_right', 'rear_left', 'rear_right']):
-            for px, part in enumerate(['shoulder', 'leg', 'foot']):
-                j = self.jointNameToId[leg + "_" + part]
-                self.pybullet_client.setJointMotorControl2(bodyIndex=self.quadruped,
-                                        jointIndex=j,
-                                        controlMode=p.POSITION_CONTROL,
-                                        targetPosition=action[lx * 3 + px],
-                                        positionGain=self.kp,
-                                        velocityGain=self.kd,
-                                        force=self.maxForce)
+        action = self.init_joint
+        q = self.GetMotorAngles()
+        q_vel = self.GetMotorVelocities()
+        # for lx, leg in enumerate(['front_left', 'front_right', 'rear_left', 'rear_right']):
+        #     for px, part in enumerate(['shoulder', 'leg', 'foot']):
+        #         j = self.jointNameToId[leg + "_" + part]
+        # self.pybullet_client.setJointMotorControl2(bodyIndex=self.quadruped,
+        #                         jointIndex=j,
+        #                         controlMode=self.pybullet_client.POSITION_CONTROL,
+        #                         targetPosition=action[lx * 3 + px],
+        #                         positionGain=self.kp,
+        #                         velocityGain=self.kd,
+        #                         force=self.maxForce)
+        # torque = self.kp * (action[lx * 3 + px] - q[lx * 3 + px]) - self.kd * q_vel[lx * 3 + px]
+        # self.pybullet_client.setJointMotorControl2(bodyIndex=self.quadruped,
+        #                                            jointIndex=j,
+        #                                            controlMode=self.pybullet_client.TORQUE_CONTROL,
+        #                                            force=torque)
 
+        PD_torque = self.kp * (action - q) - self.kd * q_vel
+        PD_torque = np.clip(PD_torque, -self.maxForce, self.maxForce)
+        self.pybullet_client.setJointMotorControlArray(bodyIndex=self.quadruped,
+                                                       jointIndices=self._motor_id_list,
+                                                       controlMode=self.pybullet_client.TORQUE_CONTROL,
+                                                       forces=np.multiply(PD_torque, self._motor_direction))
         self.pybullet_client.stepSimulation()
 
     def _filter_velocities(self, x):
-        y = self.A * (x + self._past_velocity[0]) + (1-self.C)*self.A*self._past_velocity[1]
+        y = self.A * (x + self._past_velocity[0]) + (1 - self.C) * self.A * self._past_velocity[1]
         self._past_velocity = np.copy([x, y])
         return y
 
@@ -281,8 +316,8 @@ class SpotMicroEnv(gym.Env):
     def get_body_rpy(self):
         _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
         bodyOrn = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
-        yaw = bodyOrn[2]+np.pi
-        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw <= np.pi else yaw-2*np.pi]
+        yaw = bodyOrn[2] + np.pi
+        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw <= np.pi else yaw - 2 * np.pi]
         return bodyOrn
 
     def get_linear_velocity(self):
@@ -309,23 +344,30 @@ class SpotMicroEnv(gym.Env):
     def get_reward(self):
         obs = self.get_obs()
         distance_reward = -(obs[-2] - self.desired_speed) ** 2
-        high_reward = -0*(obs[-1] - 0.17) ** 2
+        high_reward = -(obs[-1] - 0.17) ** 2
         roll_reward = -(obs[24]) ** 2
         pitch_reward = -(obs[25]) ** 2
         yaw_reward = -(obs[26]) ** 2
         action_reward = -np.sum((self._past_actions[3]) ** 2)
         action_vel_reward = -np.sum((self._past_actions[3] - self._past_actions[2]) ** 2)
         action_acc_reward = -np.sum((self._past_actions[3] - 2 * self._past_actions[2] + self._past_actions[1]) ** 2)
-        action_jerk_reward = -np.sum((self._past_actions[3] - 3 * self._past_actions[2] + 3 * self._past_actions[1] + self._past_actions[0]) ** 2)
+        action_jerk_reward = -np.sum((self._past_actions[3] - 3 * self._past_actions[2] + 3 * self._past_actions[1] +
+                                      self._past_actions[0]) ** 2)
         rewards = [distance_reward, high_reward, roll_reward, pitch_reward, yaw_reward, action_reward,
                    action_vel_reward, action_acc_reward, action_jerk_reward]
-        reward_sum = np.sum([np.exp(rewards[i] * self._objective_weights[i]) for i in range(len(rewards))])
+        reward_sum = 0
+        n_rewards = 0
+        for i in range(len(rewards)):
+            if self._objective_weights != 0:
+                reward_sum += np.exp(rewards[i]) / 500
+                n_rewards += 1
+        reward_sum /= n_rewards
         return reward_sum, np.copy(rewards)
 
     def set_mismatch(self, mismatch):
         self.mismatch = mismatch
         [friction] = mismatch
-        self.lateral_friction = 0.8*friction + 0.8
+        self.lateral_friction = 0.8 * friction + 0.8
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         if self.lateral_friction >= 0.8:
             friction_level = 2
@@ -333,7 +375,8 @@ class SpotMicroEnv(gym.Env):
             friction_level = 0
         else:
             friction_level = 1
-        texUid = self.pybullet_client.loadTexture(currentdir + "/assets/"+["checker_red", "checker_purple", "striped"][friction_level]+".png")
+        texUid = self.pybullet_client.loadTexture(
+            currentdir + "/assets/" + ["checker_red", "checker_purple", "striped"][friction_level] + ".png")
         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=texUid)
 
     def get_observation_upper_bound(self):
@@ -390,9 +433,9 @@ class SpotMicroEnv(gym.Env):
         l0, l1, l2 = [0.1, 0.2, 0.15]
         x0, y0, z0 = [-0.1, 0.03, 0]
         [o0, o1, o2] = joints
-        x = x0 - l1*sin(o1) - l2*sin(o1+o2)
-        y = y0 - l0*cos(o0) + sin(o0)*(l1*cos(o1) + l2*cos(o1+o2))
-        z = z0 + l0*sin(o0) + cos(o0)*(l1*cos(o1) + l2*cos(o1+o2))
+        x = x0 - l1 * sin(o1) - l2 * sin(o1 + o2)
+        y = y0 - l0 * cos(o0) + sin(o0) * (l1 * cos(o1) + l2 * cos(o1 + o2))
+        z = z0 + l0 * sin(o0) + cos(o0) * (l1 * cos(o1) + l2 * cos(o1 + o2))
         return [x, y, z]
 
     def from_motor_to_leg(self, motor):
@@ -401,10 +444,10 @@ class SpotMicroEnv(gym.Env):
         l2 = self.knee_to_foot
         leg = np.zeros(12)
         for i in range(4):
-            e = np.sqrt(l1**2+l2**2+2*l1*l2*np.cos(motor[3*i+2]))  # extension
-            leg[3*i+2] = np.copy(e)
-            leg[3*i+1] = motor[3*i+1] + np.arccos((l1**2+e**2-l2**2)/(2*l1*e))  # swing
-            leg[3*i] = motor[3*i]  # abduction
+            e = np.sqrt(l1 ** 2 + l2 ** 2 + 2 * l1 * l2 * np.cos(motor[3 * i + 2]))  # extension
+            leg[3 * i + 2] = np.copy(e)
+            leg[3 * i + 1] = motor[3 * i + 1] + np.arccos((l1 ** 2 + e ** 2 - l2 ** 2) / (2 * l1 * e))  # swing
+            leg[3 * i] = motor[3 * i]  # abduction
         return leg
 
     def from_leg_to_motor(self, leg):
@@ -416,26 +459,28 @@ class SpotMicroEnv(gym.Env):
         l2 = self.knee_to_foot
         motor = np.zeros(12)
         for i in range(4):
-            motor[3*i] = leg[3*i]
-            e = leg[3*i+2]
-            motor[3*i+1] = leg[3*i+1] - np.arccos((l1**2+e**2-l2**2)/(2*l1*e))
-            motor[3*i+2] = np.arccos((e**2-l1**2-l2**2)/(2*l1*l2))
+            motor[3 * i] = leg[3 * i]
+            e = leg[3 * i + 2]
+            motor[3 * i + 1] = leg[3 * i + 1] - np.arccos((l1 ** 2 + e ** 2 - l2 ** 2) / (2 * l1 * e))
+            motor[3 * i + 2] = np.arccos((e ** 2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2))
         return motor
 
 
 if __name__ == "__main__":
     import gym
     import fast_adaptation_embedding.env
-    from tqdm import tqdm
+    from tqdm import tqdm, trange
     from gym.wrappers.monitoring.video_recorder import VideoRecorder
     import matplotlib.pyplot as plt
     import pickle
+
     render = True
     # render = False
 
-    on_rack = 0
+    on_rack = 1
 
-    # (init_joint, real_ub, real_lb) = np.array([0.2, 0.1, 0.25] * 4), np.array([0.548, 1.548, 2.59] * 4), np.array([-0.548, -2.666, -0.1] * 4)
+    # (init_joint, real_ub, real_lb) = np.array([0., 1, 0.25] * 4), np.array([0.01, 1, 0.01] + [0.01, -1, 0.01] * 3), \
+    #                                  np.array([0., -1.01, 0.] + [0., -1.01, 0] * 3)
     (init_joint, real_ub, real_lb) = None, None, None
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -444,38 +489,43 @@ if __name__ == "__main__":
                    init_joint=init_joint,
                    ub=real_ub,
                    lb=real_lb,
-                   urdf_model='sphere'
-    )
+                   urdf_model='sphere',
+                   inspection=True,
+                   )
 
-    env.set_mismatch([0.])
+    env.set_mismatch([0.25])
     init_obs = env.reset()
 
-    recorder = None
-    # recorder = VideoRecorder(env, "test.mp4")
     # env.metadata["video.frames_per_second"] = 12
+
+    recorder = None
+    # recorder = VideoRecorder(env, "friction_1_slower4.mp4")
 
     ub = 1
     lb = -1
 
-    past = [(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb)]*3
+    past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
     max_vel, max_acc, max_jerk = 10, 100, 10000
     dt = 0.02
-
+    R = 0
+    Obs, Acs = [init_obs], []
     actions = None
 
-    f = "/home/timothee/Documents/SpotMicro_team/exp/results/spot_micro_03/09_03_2020_12_03_21_experiment/run_0/logs.pk"
+    f = "/home/timothee/Documents/SpotMicro_team/exp/results/spot_micro_03/09_03_2020_16_04_23_action_bounds/run_0/logs.pk"
     with open(f, 'rb') as f:
         data = pickle.load(f)
 
-    actions = Noneactions = data['actions'][0][-1]
+    actions = None
+    # actions = data['actions'][0][-1]
 
     degree = 0
-    for i in tqdm(range(3, 500+3)):
+    t = trange(3, 500 + 3, desc='', leave=True)
+    for i in t:
         if recorder is not None:
             recorder.capture_frame()
         if degree == 0:
-            amax = [ub]*12
-            amin = [lb]*12
+            amax = [ub] * 12
+            amin = [lb] * 12
         elif degree == 1:
             amax = past[i - 1] + max_vel * dt
             amin = past[i - 1] - max_vel * dt
@@ -500,15 +550,23 @@ if __name__ == "__main__":
             amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
         x = np.random.uniform(amin, amax)
         # x = past[-1]
-        action = np.copy(x)
+        # action = np.copy(x)
+        action = [0] + [np.sin(2 * np.pi * (i - 2) / 100)] + [0] * 10
         if actions is not None:
-            action = actions[i-3]
+            action = actions[i - 3]
         obs, reward, done, info = env.step(action)
+        Obs.append(obs)
+        Acs.append(action)
+        R += reward
+        t.set_description("Reward: " + str(int(100 * R) / 100))
         past = np.append(past, [np.copy(x)], axis=0)
         if done:
             break
-        time.sleep(0.02)
 
+        time.sleep(0.02)
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
+
+    with open("saved_traj.pk", 'wb') as f:
+        pickle.dump([Obs, Acs], f)
