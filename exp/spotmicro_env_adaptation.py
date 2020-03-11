@@ -18,7 +18,6 @@ import pickle
 import os
 from os import path
 import argparse
-from utils import ProgBar
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
 from pynput.keyboard import Key, Listener
@@ -826,15 +825,14 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [0.25],
-    [-0.75]
+    [0.],
 ])
 
-# test_mismatches = None
-test_mismatches = [
-    [0.25],
-    [-0.75]
-]
+test_mismatches = None
+# test_mismatches = [
+#     [0.25],
+#     [-0.75]
+# ]
 
 config['test_mismatches'] = test_mismatches
 
