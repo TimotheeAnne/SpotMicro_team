@@ -68,7 +68,7 @@ class SpotMicroEnv(gym.Env):
         self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
-        self.kp = 15  # 0.045
+        self.kp = 8  # 0.045
         self.kd = 0.03  # 0.4
         self.maxForce = 12.5
         self._motor_direction = [-1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1]
@@ -77,7 +77,7 @@ class SpotMicroEnv(gym.Env):
         self.knee_to_foot = 0.1
         self.normalized_action = normalized_action
         if init_joint is None:
-            init_joint = [0., -0., 0.24] * 2 + [0.0, -0.4, 0.24] * 2
+            init_joint = [0.1, -0., 0.24] * 2 + [0.1, -0.5, 0.24] * 2
         self.init_joint = self.from_leg_to_motor(init_joint)
         self.lateral_friction = 0.8
         self.urdf_model = urdf_model
@@ -93,8 +93,10 @@ class SpotMicroEnv(gym.Env):
         elif self.action_space == "Motor":
             self.ub = np.array(
                 [0.2, -0.2, 1.8] * 2 + [0.2, -0.6, 1.8] * 2)  # max [0.548, 1.548, 2.59]
+                # [0.548, 1.548, 2.59]*4)
             self.lb = np.array(
                 [-0.1, -0.6, 1.] * 2 + [-0.1, -1., 1.] * 2)  # min [-0.548, -2.666, -0.1]
+                # [-0.548, -2.666, -0.1]*4)
         elif self.action_space == "S&E":
             """ abduction - swing - extension"""
             self.ub = np.array([0.2, 0.4, 0.25] * 4)  # [0.2, 0.4, 0.25]
