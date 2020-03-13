@@ -708,9 +708,9 @@ config = {
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": None,
-    "real_ub": None,
-    "real_lb": None,
+    "init_joint": [0.1, -0., 0.24] * 2 + [0.1, -0.6, 0.24] * 2,
+    "real_ub": [0.2, -0.2, 1.8] * 2 + [0.2, -0.9, 1.8] * 2,
+    "real_lb": [-0.1, -0.6, 1.] * 2 + [-0.1, -1.1, 1.] * 2,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
@@ -881,9 +881,9 @@ def env_args_from_config(config):
         'action_acc_weight': config["action_acc_weight"],
         'action_jerk_weight': config["action_jerk_weight"],
         'on_rack': False,
-        "init_joint": config["init_joint"],
-        "ub": config["real_ub"],
-        "lb": config["real_lb"],
+        "init_joint": np.array(config["init_joint"]),
+        "ub": np.array(config["real_ub"]),
+        "lb": np.array(config["real_lb"]),
     }
 
 
