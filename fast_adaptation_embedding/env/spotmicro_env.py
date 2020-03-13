@@ -70,15 +70,17 @@ class SpotMicroEnv(gym.Env):
         self.init_position = [0, 0, 0.23]
         self.kp = 8  # 0.045
         self.kd = 0.03  # 0.4
-        self.maxForce = 12.5
+        self.maxForce = 3  # 12.5
         self._motor_direction = [-1, 1, 1, 1, 1, 1, -1, 1, 1, 1, 1, 1]
         self.mismatch = [0]
         self.shoulder_to_knee = 0.2
         self.knee_to_foot = 0.1
         self.normalized_action = normalized_action
         if init_joint is None:
-            init_joint = [0.1, -0., 0.24] * 2 + [0.1, -0.5, 0.24] * 2
-        self.init_joint = self.from_leg_to_motor(init_joint)
+            init_joint = [0.1, -0., 0.24] * 2 + [0.1, -0.6, 0.24] * 2
+            self.init_joint = self.from_leg_to_motor(init_joint)
+        else:
+            self.init_joint = init_joint
         self.lateral_friction = 0.8
         self.urdf_model = urdf_model
         self.fc = 10
@@ -92,10 +94,10 @@ class SpotMicroEnv(gym.Env):
             self.lb = np.array(lb)
         elif self.action_space == "Motor":
             self.ub = np.array(
-                [0.2, -0.2, 1.8] * 2 + [0.2, -0.6, 1.8] * 2)  # max [0.548, 1.548, 2.59]
+                [0.2, -0.2, 1.8] * 2 + [0.2, -0.9, 1.8] * 2)  # max [0.548, 1.548, 2.59]
                 # [0.548, 1.548, 2.59]*4)
             self.lb = np.array(
-                [-0.1, -0.6, 1.] * 2 + [-0.1, -1., 1.] * 2)  # min [-0.548, -2.666, -0.1]
+                [-0.1, -0.6, 1.] * 2 + [-0.1, -1.1, 1.] * 2)  # min [-0.548, -2.666, -0.1]
                 # [-0.548, -2.666, -0.1]*4)
         elif self.action_space == "S&E":
             """ abduction - swing - extension"""
@@ -186,6 +188,7 @@ class SpotMicroEnv(gym.Env):
         self.pybullet_client.resetBasePositionAndOrientation(self.quadruped, init_pos, self.init_oritentation)
         self.pybullet_client.resetBaseVelocity(self.quadruped, [0, 0, 0], [0, 0, 0])
         for _ in range(300):
+            time.sleep(0.1)
             self.apply_action(self.init_joint)
         self.t = 0
         self._past_velocity = [[0] * 12] * 2
@@ -301,7 +304,8 @@ class SpotMicroEnv(gym.Env):
         self.pybullet_client.setJointMotorControlArray(bodyIndex=self.quadruped,
                                                        jointIndices=self._motor_id_list,
                                                        controlMode=self.pybullet_client.TORQUE_CONTROL,
-                                                       forces=np.multiply(PD_torque, self._motor_direction))
+                                                       forces=np.multiply(PD_torque, self._motor_direction),
+                                                       )
         self.pybullet_client.stepSimulation()
 
     def _filter_velocities(self, x):
@@ -537,6 +541,9 @@ if __name__ == "__main__":
         real_ub = np.array([0.5, -0.3, 1.35] * 2 + [0.5, -0.7, 1.6] * 2)  # max [0.548, 1.548, 2.59]
         real_lb = np.array([-0.5, -0.5, 1.15] * 2 + [-0.5, -0.9, 1.2] * 2)  # min [-0.548, -2.666, -0.1]
     else:
+        init_joint = np.array([0.1, -0., 0.24] * 2 + [0.1, -0.6, 0.24] * 2)
+        real_ub = np.array([0.2, -0.2, 1.8] * 2 + [0.2, -0.9, 1.8] * 2)  # max [0.548, 1.548, 2.59]
+        real_lb = np.array([-0.1, -0.6, 1.] * 2 + [-0.1, -1.1, 1.] * 2)  # min [-0.548, -2.666, -0.1]
         (init_joint, real_ub, real_lb) = None, None, None
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -545,7 +552,7 @@ if __name__ == "__main__":
                    init_joint=init_joint,
                    ub=real_ub,
                    lb=real_lb,
-                   urdf_model='sphere',
+                   urdf_model=['basic', 'sphere'][0],
                    inspection=True,
                    normalized_action=not controller
                    )
@@ -567,10 +574,10 @@ if __name__ == "__main__":
     R = 0
     Obs, Acs = [init_obs], []
     actions = None
-
-    f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/11_03_2020_12_08_11_experiment/run_0/logs.pk"
-    with open(f, 'rb') as f:
-        data = pickle.load(f)
+    #
+    # f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/11_03_2020_12_08_11_experiment/run_0/logs.pk"
+    # with open(f, 'rb') as f:
+    #     data = pickle.load(f)
 
     actions = None
     # actions = data['actions'][0][99]
