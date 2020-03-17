@@ -603,7 +603,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
     for env_index in range(n_task):
         os.makedirs(res_dir + "/models/ensemble_"+str(env_index))
-        test_model(models[env_index], init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
+        # test_model(models[env_index], init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
         models[env_index].save(file_path=res_dir+"/models/ensemble_"+str(env_index)+"/")
 
     if config['test_mismatches'] is not None:
@@ -686,7 +686,7 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
     res_dir = config['pretrained_model']
     device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
     models = load_model(res_dir+"/models/ensemble_0/", device=device)
-    test_model(models, init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
+    # test_model(models, init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
     gym_kwargs['render'] = True
     env = gym.make(*gym_args, **gym_kwargs)
     env.set_mismatch(mismatches[0])
@@ -718,7 +718,7 @@ config = {
     "K": 1,  # number of control steps with the same controller
     "desired_speed": 0.5,
     "xreward": 1,
-    "zreward": 1,
+    "zreward": 0,
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
