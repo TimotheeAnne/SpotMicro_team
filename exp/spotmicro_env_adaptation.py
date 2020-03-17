@@ -881,9 +881,9 @@ def env_args_from_config(config):
         'action_acc_weight': config["action_acc_weight"],
         'action_jerk_weight': config["action_jerk_weight"],
         'on_rack': False,
-        "init_joint": config["init_joint"],
-        "ub": config["real_ub"],
-        "lb": config["real_lb"],
+        "init_joint": np.array(config["init_joint"]),
+        "ub": np.array(config["real_ub"]),
+        "lb": np.array(config["real_lb"]),
     }
 
 
