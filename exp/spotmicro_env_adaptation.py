@@ -20,7 +20,7 @@ from os import path
 import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
-from pynput.keyboard import Key, Listener
+# from pynput.keyboard import Key, Listener
 
 
 class Cost(object):
@@ -928,4 +928,5 @@ else:
             if run == 0:
                 with open(exp_dir + "/config.txt", "w") as f:
                     f.write(str(config_params))
+
 

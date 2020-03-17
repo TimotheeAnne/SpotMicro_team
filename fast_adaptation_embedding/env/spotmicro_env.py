@@ -15,7 +15,7 @@ import numpy as np
 import gym
 from gym import spaces
 from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
-from pynput.keyboard import Key, Listener
+# from pynput.keyboard import Key, Listener
 
 gym.logger.set_level(40)
 
@@ -337,7 +337,7 @@ class SpotMicroEnv(gym.Env):
         Obs.extend(self.get_body_rpy())
         Obs.extend(self.get_angular_velocity())
         Obs.extend(self.get_linear_velocity()[:2])  # x and y velocity
-        # Obs.extend(self.get_body_xyz()[2:3])  # z height
+        Obs.extend(self.get_body_xyz()[2:3])  # z height
         return Obs
 
     def set_desired_speed(self, speed):
