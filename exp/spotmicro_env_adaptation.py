@@ -133,7 +133,7 @@ class Cost(object):
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
                 x_vel_cost = (start_states[:, 30] - self.__desired_speed) ** 2 * self.__xreward
-                # z_cost = (start_states[:, -1] - 0.21) ** 2 * self.__zreward
+                z_cost = (start_states[:, -1] - 0.165) ** 2 * self.__zreward
                 roll_cost = (start_states[:, 24]) ** 2 * self.__rollreward
                 pitch_cost = (start_states[:, 25]) ** 2 * self.__pitchreward
                 yaw_cost = (start_states[:, 26]) ** 2 * self.__yawreward
@@ -172,7 +172,7 @@ class Cost(object):
                                                      + -torch.exp(-yaw_cost) * self.__discount ** h \
                                                      + -torch.exp(-pitch_cost) * self.__discount ** h \
                                                      + -torch.exp(-roll_cost) * self.__discount ** h \
-                                                     # + -torch.exp(-z_cost) * self.__discount ** h
+                                                     + -torch.exp(-z_cost) * self.__discount ** h
 
         if self.__hard_smoothing:
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
@@ -708,9 +708,9 @@ config = {
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": None,
-    "real_ub": None,
-    "real_lb": None,
+    "init_joint": [0.1, -0.52, 1.379]*2 + [0.1, -1.2, 1.379]*2,
+    "real_ub": [0.2, -0.3, 1.8] * 2 + [0.2, -1., 1.8] * 2,
+    "real_lb": [-0.1, -0.7, 1.] * 2 + [-0.1, -1.4, 1.] * 2,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
@@ -718,7 +718,7 @@ config = {
     "K": 1,  # number of control steps with the same controller
     "desired_speed": 0.5,
     "xreward": 1,
-    "zreward": 0,
+    "zreward": 1,
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
@@ -745,8 +745,8 @@ config = {
     # Ensemble model params
     "cuda": True,
     "ensemble_epoch": 5,
-    "ensemble_dim_in": 32 + 12,
-    "ensemble_dim_out": 32,
+    "ensemble_dim_in": 32 + 12+1,
+    "ensemble_dim_out": 32+1,
     "ensemble_hidden": [256, 256],
     "hidden_activation": "relu",
     "ensemble_cuda": True,
