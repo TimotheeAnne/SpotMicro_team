@@ -540,6 +540,10 @@ if __name__ == "__main__":
         real_lb = np.array([-0.5, -0.5, 1.15] * 2 + [-0.5, -0.9, 1.2] * 2)  # min [-0.548, -2.666, -0.1]
     else:
         (init_joint, real_ub, real_lb) = None, None, None
+        init_joint = np.array([0., -0.8, 1.379]*2 + [0., -1.2, 1.379]*2)
+        real_ub = np.array([0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2)  # max [0.548, 1.548, 2.59]
+        real_lb = np.array([-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2)  # min [-0.548, -2.666, -0.1]
+
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
                    on_rack=on_rack,

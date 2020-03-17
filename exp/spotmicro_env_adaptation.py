@@ -708,9 +708,9 @@ config = {
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": [0.1, -0.52, 1.379]*2 + [0.1, -1.2, 1.379]*2,
-    "real_ub": [0.2, -0.3, 1.8] * 2 + [0.2, -1., 1.8] * 2,
-    "real_lb": [-0.1, -0.7, 1.] * 2 + [-0.1, -1.4, 1.] * 2,
+    "init_joint": [0., -0.8, 1.379]*2 + [0., -1.2, 1.379]*2,
+    "real_ub": [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2,
+    "real_lb": [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
