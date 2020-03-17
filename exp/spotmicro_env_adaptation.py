@@ -700,7 +700,7 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 500,
+    "iterations": 300,
     "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
@@ -840,25 +840,25 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-# config['exp_suffix'] = "action_bounds"
-# config_params = []
-#
-# action_space = [
-#     ("Motor", [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2, [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2, [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2),
-#     ("Motor", [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2, [0.4, -0., 1.65] * 4, [-0.1, -1.2, 1.2] * 4),
-#     ("Motor", [0.2, 0.1, 0.25]*4, [0.3, 0.5, 2] * 4, [-0.3, -1.5, 1.] * 4),
-#     ("Motor", [0.2, 0.1, 0.25] * 4, [0.548, 1.548, 2.59] * 4, [-0.548, -2.666, -0.1] * 4),
-# ]
+config['exp_suffix'] = "action_bounds"
+config_params = []
 
-# for i in range(len(action_space)):
-#     for _ in range(2):
-#         (AS, init_joint, ub, lb) = action_space[i]
-#         config_params.append({
-#             'real_ub': ub,
-#             'real_lb': lb,
-#             'init_joint': init_joint,
-#             'action_space': AS
-#         })
+action_space = [
+    ("Motor", [0.1, -0.72, 1.379]*2 + [0.1, -1, 1.379]*2, [0.2, -0.5, 1.8] * 2 + [0.2, -0.8, 1.8] * 2, [-0.1, -0.9, 1.] * 2 + [-0.1, -1.2, 1.] * 2),
+    ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2, [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2),
+    ("Motor", [0., -0.6, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.4, 1.8] * 2 + [0.01, -0.8, 1.8] * 2, [0., -1.1, 1.] * 2 + [0., -1.4, 1.] * 2),
+    ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.3, 2.] * 2 + [0.01, -0.8, 2.] * 2, [0., -1.2, 0.8] * 2 + [0., -1.6, 0.8] * 2),
+]
+
+for i in range(len(action_space)):
+    for _ in range(2):
+        (AS, init_joint, ub, lb) = action_space[i]
+        config_params.append({
+            'real_ub': ub,
+            'real_lb': lb,
+            'init_joint': init_joint,
+            'action_space': AS
+        })
 
 
 def apply_config_params(conf, params):
@@ -884,6 +884,7 @@ def env_args_from_config(config):
         "init_joint": np.array(config["init_joint"]),
         "ub": np.array(config["real_ub"]),
         "lb": np.array(config["real_lb"]),
+        "normalized_action": True,
     }
 
 
