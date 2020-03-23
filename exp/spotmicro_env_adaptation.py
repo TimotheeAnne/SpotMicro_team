@@ -133,7 +133,7 @@ class Cost(object):
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
                 x_vel_cost = (start_states[:, 30] - self.__desired_speed) ** 2 * self.__xreward
-                z_cost = (start_states[:, -1] - 0.165) ** 2 * self.__zreward
+                z_cost = (start_states[:, -1] - 0.1855) ** 2 * self.__zreward
                 roll_cost = (start_states[:, 24]) ** 2 * self.__rollreward
                 pitch_cost = (start_states[:, 25]) ** 2 * self.__pitchreward
                 yaw_cost = (start_states[:, 26]) ** 2 * self.__yawreward
@@ -708,17 +708,17 @@ config = {
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": [0., -0.8, 1.379]*2 + [0., -1.2, 1.379]*2,
-    "real_ub": [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2,
-    "real_lb": [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2,
+    "init_joint": [0., -0.6, 0.9] * 4,
+    "real_ub": [0.2, -0.3, 1.2] * 4,
+    "real_lb": [-0.2, -0.8, 0.6] * 4,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "desired_speed": 0.5,
+    "desired_speed": 0.3,
     "xreward": 1,
-    "zreward": 0,
+    "zreward": 1,
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
@@ -840,25 +840,25 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-config['exp_suffix'] = "action_bounds"
-config_params = []
-
-action_space = [
-    ("Motor", [0.1, -0.72, 1.379]*2 + [0.1, -1, 1.379]*2, [0.2, -0.5, 1.8] * 2 + [0.2, -0.8, 1.8] * 2, [-0.1, -0.9, 1.] * 2 + [-0.1, -1.2, 1.] * 2),
-    ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2, [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2),
-    ("Motor", [0., -0.6, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.4, 1.8] * 2 + [0.01, -0.8, 1.8] * 2, [0., -1.1, 1.] * 2 + [0., -1.4, 1.] * 2),
-    ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.3, 2.] * 2 + [0.01, -0.8, 2.] * 2, [0., -1.2, 0.8] * 2 + [0., -1.6, 0.8] * 2),
-]
-
-for i in range(len(action_space)):
-    for _ in range(2):
-        (AS, init_joint, ub, lb) = action_space[i]
-        config_params.append({
-            'real_ub': ub,
-            'real_lb': lb,
-            'init_joint': init_joint,
-            'action_space': AS
-        })
+# config['exp_suffix'] = "action_bounds"
+# config_params = []
+#
+# action_space = [
+#     ("Motor", [0.1, -0.72, 1.379]*2 + [0.1, -1, 1.379]*2, [0.2, -0.5, 1.8] * 2 + [0.2, -0.8, 1.8] * 2, [-0.1, -0.9, 1.] * 2 + [-0.1, -1.2, 1.] * 2),
+#     ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2, [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2),
+#     ("Motor", [0., -0.6, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.4, 1.8] * 2 + [0.01, -0.8, 1.8] * 2, [0., -1.1, 1.] * 2 + [0., -1.4, 1.] * 2),
+#     ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.3, 2.] * 2 + [0.01, -0.8, 2.] * 2, [0., -1.2, 0.8] * 2 + [0., -1.6, 0.8] * 2),
+# ]
+#
+# for i in range(len(action_space)):
+#     for _ in range(2):
+#         (AS, init_joint, ub, lb) = action_space[i]
+#         config_params.append({
+#             'real_ub': ub,
+#             'real_lb': lb,
+#             'init_joint': init_joint,
+#             'action_space': AS
+#         })
 
 
 def apply_config_params(conf, params):
