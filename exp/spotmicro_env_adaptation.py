@@ -20,6 +20,8 @@ from os import path
 import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
+
+
 # from pynput.keyboard import Key, Listener
 
 
@@ -61,27 +63,11 @@ class Cost(object):
         self.__action_space = config['action_space']
         self.__ctrl_time_step = config['ctrl_time_step']
 
-    def transform_action_to_motor_command(self, actions):
-        motor_angle = torch.zeros([self.__popsize, self.__action_dim]).cuda()
-        scale_for_singularity = 1
-        offset_for_singularity = 1.5
-        num_motors = 8
-        half_num_motors = int(num_motors / 2)
-        quater_pi = np.pi / 4
-        for i in range(num_motors):
-            action_idx = int(i // 2)
-            forward_backward_component = (-scale_for_singularity * quater_pi *
-                                          (actions[:, action_idx + half_num_motors] + offset_for_singularity))
-            extension_component = (-1) ** i * quater_pi * actions[:, action_idx]
-            if i >= half_num_motors:
-                extension_component = -extension_component
-            motor_angle[:, i] = (np.pi + forward_backward_component + extension_component)
-        return motor_angle
-
     def cost_fn(self, samples):
         a = torch.FloatTensor(samples).cuda() \
             if self.__ensemble_model.CUDA \
             else torch.FloatTensor(samples)
+
         # compute the samples for hard smoothing
         ad = self.__action_dim
         if self.__hard_smoothing:
@@ -140,11 +126,11 @@ class Cost(object):
 
                 if self.__soft_smoothing:
                     action_norm_cost = torch.sum(-torch.exp(-self.__action_norm_w * (
-                    action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]) ** 2))
+                        action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]) ** 2))
                     all_costs[start_index: end_index] += action_norm_cost * self.__discount ** h
                     action_vel_cost = -torch.exp(-self.__action_vel_w * (
-                                action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim] - action_batch[:, (
-                                                                                                                                  h - 1) * self.__action_dim: h * self.__action_dim]) ** 2)
+                            action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim] - action_batch[:, (
+                                                                                                                          h - 1) * self.__action_dim: h * self.__action_dim]) ** 2)
                     all_costs[start_index: end_index] += torch.sum(action_vel_cost, axis=1) * self.__discount ** h
                     action_acc_cost = -torch.exp(
                         -self.__action_acc_w * (action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]
@@ -177,7 +163,7 @@ class Cost(object):
         if self.__hard_smoothing:
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
         else:
-            return all_costs.cpu().detach().numpy()
+            return a[torch.argmin(all_costs)].cpu().detach().numpy()
 
 
 def train_ensemble_model(train_in, train_out, sampling_size, config, model=None):
@@ -221,7 +207,7 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
     recorder = None
     # recorder = VideoRecorder(env, config['logdir'] + "/videos/random_"+str(index_iter)+".mp4")
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
-    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+    past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for i in range(3, steps + 3):
         if config['hard_smoothing']:
             amax = np.min((past[i - 1] + max_vel, 2 * past[i - 1] - past[i - 2] + max_acc,
@@ -283,9 +269,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     trajectory = []
     traject_cost = 0
     model_error = 0
-    sliding_mean = np.zeros(config["sol_dim"])
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
-    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+    past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
@@ -314,7 +299,6 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         model_error += test_model(model, current_state.copy(), a.copy(), next_state - current_state)
         current_state = next_state
         traject_cost += -r
-        sliding_mean[0:-len(a)] = sol[len(a)::]
         if done:
             break
     if recorder is not None:
@@ -333,7 +317,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
 def execute_online(env, model, config, pred_high, pred_low, K):
     current_state = env.reset()
 
-    past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+    past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     event = [None]
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config['max_action_jerk'], config['max_torque_jerk']
@@ -342,7 +326,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
     def on_press(key):
         if key == Key.left:
             env.reset()
-            past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+            past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
         elif key == Key.down:
@@ -373,7 +357,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             smooth = env.pybullet_client.readUserDebugParameter(IDsmooth) > 0
             popsize = env.pybullet_client.readUserDebugParameter(IDpopsize)
             horizon = env.pybullet_client.readUserDebugParameter(IDhorizon)
-            config['popsize'] = int(10**popsize)
+            config['popsize'] = int(10 ** popsize)
             config['horizon'] = int(horizon)
             config['sol_dim'] = config['horizon'] * config['action_dim']
             config['hard_smoothing'] = smooth
@@ -402,7 +386,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
                     x = np.random.uniform(amin, amax)
                     a = np.copy(x)
                 else:
-                    x = np.random.random(12)*2-1
+                    x = np.random.random(12) * 2 - 1
                     a = np.copy(x)
 
             if not MPC:
@@ -423,7 +407,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             current_state = obs
             if done:
                 env.reset()
-                past = np.array([(env.init_joint-(env.ub+env.lb)/2)*2/(env.ub-env.lb) for _ in range(3)])
+                past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
 
 
 def test_model(ensemble_model, init_state, action, state_diff, to_print=False):
@@ -489,16 +473,16 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         models = n_task * [None]
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
         for i in range(n_task):
-            models[i] = load_model(config['pretrained_model']+"/models/ensemble_"+str(i)+"/", device=device)
+            models[i] = load_model(config['pretrained_model'] + "/models/ensemble_" + str(i) + "/", device=device)
         config['iterations'] = 0
         print("Found pretrained model. Passing directly to testing model.")
 
     elif path.exists(config["data_dir"] + "/trajectories.npy") and path.exists(config["data_dir"] + "/mismatches.npy"):
-            print("Found stored data. Setting random trials to zero.")
-            data = np.load(config["data_dir"] + "/trajectories.npy")
-            mismatches = np.load(config["data_dir"] + "/mismatches.npy")
-            config["random_episodes"] = 0
-            n_task = len(mismatches)
+        print("Found stored data. Setting random trials to zero.")
+        data = np.load(config["data_dir"] + "/trajectories.npy")
+        mismatches = np.load(config["data_dir"] + "/mismatches.npy")
+        config["random_episodes"] = 0
+        n_task = len(mismatches)
 
     envs = [gym.make(*gym_args, **gym_kwargs) for i in range(n_task)]
     for i, e in enumerate(envs):
@@ -602,9 +586,9 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     print("Finally Saving model..")
 
     for env_index in range(n_task):
-        os.makedirs(res_dir + "/models/ensemble_"+str(env_index))
+        os.makedirs(res_dir + "/models/ensemble_" + str(env_index))
         # test_model(models[env_index], init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
-        models[env_index].save(file_path=res_dir+"/models/ensemble_"+str(env_index)+"/")
+        models[env_index].save(file_path=res_dir + "/models/ensemble_" + str(env_index) + "/")
 
     if config['test_mismatches'] is not None:
         test_mismatches = config['test_mismatches']
@@ -685,7 +669,7 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
     assert config['pretrained_model'] is not None, "must give an existing logdir"
     res_dir = config['pretrained_model']
     device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-    models = load_model(res_dir+"/models/ensemble_0/", device=device)
+    models = load_model(res_dir + "/models/ensemble_0/", device=device)
     # test_model(models, init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
     gym_kwargs['render'] = True
     env = gym.make(*gym_args, **gym_kwargs)
@@ -694,6 +678,7 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
     env.render("human")
     execute_online(env=env, model=models, config=config, pred_high=None, pred_low=None, K=config['K'])
 
+
 ################################################################################
 
 
@@ -701,22 +686,23 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 25,  # per task
+    "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "test_iterations": 20,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
-    "action_space": ['S&E', 'Motor'][1],  # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": [0., -0.6, 0.9] * 4,
-    "real_ub": [0.2, -0.3, 1.2] * 4,
-    "real_lb": [-0.2, -0.8, 0.6] * 4,
+    "action_space": ['S&E', 'Motor'][1],
+    # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
+    "init_joint": [0.1, -0.6, 0.7] * 2 + [0.1, 0.6, -0.7] * 2,
+    "real_ub": [0.2, -0.3, 1.2] * 2 + [0.2, 0.3, -1.2] * 2,
+    "real_lb": [-0.2, -0.9, 0.2] * 2 + [-0.2, 0.9, -0.2] * 2,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "desired_speed": 0.3,
+    "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
     "rollreward": 1,
@@ -730,7 +716,7 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "record_video": 1,
+    "record_video": 0,
     "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_03",
@@ -745,8 +731,8 @@ config = {
     # Ensemble model params
     "cuda": True,
     "ensemble_epoch": 5,
-    "ensemble_dim_in": 32 + 12+1,
-    "ensemble_dim_out": 32+1,
+    "ensemble_dim_in": 32 + 12 + 1,
+    "ensemble_dim_out": 32 + 1,
     "ensemble_hidden": [256, 256],
     "hidden_activation": "relu",
     "ensemble_cuda": True,
@@ -840,25 +826,22 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-# config['exp_suffix'] = "action_bounds"
-# config_params = []
-#
-# action_space = [
-#     ("Motor", [0.1, -0.72, 1.379]*2 + [0.1, -1, 1.379]*2, [0.2, -0.5, 1.8] * 2 + [0.2, -0.8, 1.8] * 2, [-0.1, -0.9, 1.] * 2 + [-0.1, -1.2, 1.] * 2),
-#     ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.2, -0.5, 1.8] * 2 + [0.2, -1., 1.8] * 2, [-0.1, -1.1, 1.] * 2 + [-0.1, -1.4, 1.] * 2),
-#     ("Motor", [0., -0.6, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.4, 1.8] * 2 + [0.01, -0.8, 1.8] * 2, [0., -1.1, 1.] * 2 + [0., -1.4, 1.] * 2),
-#     ("Motor", [0., -0.8, 1.379] * 2 + [0., -1.2, 1.379] * 2, [0.01, -0.3, 2.] * 2 + [0.01, -0.8, 2.] * 2, [0., -1.2, 0.8] * 2 + [0., -1.6, 0.8] * 2),
-# ]
-#
-# for i in range(len(action_space)):
-#     for _ in range(2):
-#         (AS, init_joint, ub, lb) = action_space[i]
-#         config_params.append({
-#             'real_ub': ub,
-#             'real_lb': lb,
-#             'init_joint': init_joint,
-#             'action_space': AS
-#         })
+config['exp_suffix'] = "smothing"
+config_params = []
+
+# config_params.append({'hard_smoothing': 0, "xreward": 0})
+# config_params.append({'hard_smoothing': 0, "xreward": 1})
+
+weights = [[10, 0, 0], [20, 0, 0], [10, 100, 0], [20, 200, 0], [10, 100, 10000], [20, 200, 20000]]
+for j in range(len(weights)):
+    for i in range(2):
+        config_params.append({
+            'hard_smoothing': 1,
+            'xreward': i,
+            "action_vel_weight": weights[j][0],
+            "action_acc_weight": weights[j][1],
+            "action_jerk_weight": weights[j][2]
+        })
 
 
 def apply_config_params(conf, params):
@@ -901,7 +884,7 @@ if online:
     # config["real_lb"] = [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2
     path = "/home/timothee/Documents/SpotMicro_team/exp/results/"
     directory = ['09_03_2020_12_03_21_experiment', '09_03_2020_16_04_23_action_bounds'][1]
-    config['pretrained_model'] = path + config['env_name'] + "/"+directory+"/run_0"
+    config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
     online_mismatches = [[0.25]]
@@ -929,5 +912,3 @@ else:
             if run == 0:
                 with open(exp_dir + "/config.txt", "w") as f:
                     f.write(str(config_params))
-
-
