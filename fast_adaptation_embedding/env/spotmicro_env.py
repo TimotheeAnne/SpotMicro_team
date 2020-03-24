@@ -41,6 +41,7 @@ class SpotMicroEnv(gym.Env):
                  render=False,
                  on_rack=False,
                  action_space="Motor",
+                 ctrl_time_step=0.02,
                  distance_weight=1.0,
                  desired_speed=1.0,
                  high_weight=0.0,
@@ -66,17 +67,16 @@ class SpotMicroEnv(gym.Env):
             self.pybullet_client = bullet_client.BulletClient(connection_mode=p.GUI)
         else:
             self.pybullet_client = bullet_client.BulletClient(connection_mode=p.DIRECT)
-
         # Simulation Configuration
         self.fixedTimeStep = 1. / NUM_SIMULATION_ITERATION_STEPS  # 550
-        self.action_repeat = 20
+        self.action_repeat = int(NUM_SIMULATION_ITERATION_STEPS * ctrl_time_step)
         self.numSolverIterations = int(NUM_SIMULATION_ITERATION_STEPS / self.action_repeat)
         self.useFixeBased = on_rack
         self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
-        self.kp = np.array([20, 20, 3]*4) if kp is None else kp
-        self.kd = np.array([0.1, 0.1, 0.00375]*4) if kd is None else kd
+        self.kp = np.array([10, 5, 3]*4) if kp is None else kp
+        self.kd = np.array([0.1, 0.1, 0.04]*4) if kd is None else kd
         self.maxForce = 3
         self._motor_direction = [-1, 1, 1]*4
         self.mismatch = [0]
@@ -120,7 +120,8 @@ class SpotMicroEnv(gym.Env):
         self._BuildJointNameToIdDict()
         self._BuildMotorIdList()
         self.jointNameToId = self.getJointNames(self.quadruped)
-        self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations)
+        self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations,
+                                                       fixedTimeStep=self.fixedTimeStep)
         self.pybullet_client.resetDebugVisualizerCamera(1, 85.6, 0, [-0.61, 0.12, 0.25])
 
         action_dim = 12  # [steering, step_size, leg_extension, leg_extension_offset]
@@ -188,7 +189,7 @@ class SpotMicroEnv(gym.Env):
                 targetPositions=np.multiply(self.init_joint, self._motor_direction),
                 forces=np.ones(12) * 1000
             )
-            # time.sleep(self.fixedTimeStep)
+            # time.sleep(self.fixedTimeStep*20)
             self.pybullet_client.stepSimulation()
         p.setJointMotorControlArray(
             self.quadruped,
@@ -205,7 +206,7 @@ class SpotMicroEnv(gym.Env):
             self.apply_action(self.init_joint)
             # time.sleep(self.fixedTimeStep*10)
         self.t = 0
-        self._past_velocity = [[0] * 12] * 2
+        self._past_velocity = np.zeros((2, 12))
         return self.get_obs()
 
     def render(self, mode="rgb_array", close=False):
@@ -337,7 +338,7 @@ class SpotMicroEnv(gym.Env):
     def get_obs(self):
         Obs = []
         Obs.extend(self.GetMotorAngles().tolist())
-        Obs.extend(self.GetMotorVelocities().tolist())
+        Obs.extend(self._filter_velocities(self.GetMotorVelocities()).tolist())
         Obs.extend(self.get_body_rpy())
         Obs.extend(self.get_angular_velocity())
         Obs.extend(self.get_linear_velocity()[:2])  # x and y velocity
@@ -555,14 +556,13 @@ if __name__ == "__main__":
                    urdf_model='sphere',
                    inspection=True,
                    normalized_action=1,
-                   kd=kd,
-                   kp=kp
+                   ctrl_time_step=0.02
                    )
 
     env.set_mismatch([0.])
 
-    kd = [0.00375]
-    kp = [0.05]
+    kd = [0.1]
+    kp = [3]
 
     Kp, Kd = [], []
     for p in kp:
@@ -571,11 +571,12 @@ if __name__ == "__main__":
             Kp.append(p)
 
     joint = 2
-    # actions = [[0]*12]*1003 + [[0, 0]+[2]+[0]*9]*1000
+    # actions = [[0]*12]*1003 + [[0., -0.6, 1.2]*4]*1000
+    # actions = [[0]*12]*1003 + [[0.4,0., 0.]*4]*1000
     O, A = [], []
-    for j in tqdm(range(len(Kd))):
-        env.set_kd([0.1, 0.1, 0.00375]*4)
-        env.set_kp([20, 20, 3]*4)
+    for j in range(len(Kd)):
+        # env.set_kd([0.1, 0.1, 0.04]*4)
+        # env.set_kp([10, 5, 3]*4)
 
         init_obs = env.reset()
         # env.metadata["video.frames_per_second"] = 12
@@ -586,24 +587,24 @@ if __name__ == "__main__":
         ub = 1
         lb = -1
 
-        past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
-        # past = [env.init_joint]*3
+        # past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
+        past = [env.init_joint]*3
         max_vel, max_acc, max_jerk = 10, 100, 10000
         dt = 0.02
         R = 0
         Obs, Acs = [init_obs], []
-
-        f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/11_03_2020_12_08_11_experiment/run_0/logs.pk"
+        X, V = [], []
+        f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/23_03_2020_12_40_33_experiment/run_0/logs.pk"
         with open(f, 'rb') as f:
             data = pickle.load(f)
 
         actions = None
-        # actions = data['actions'][0][99]
+        # actions = data['actions'][0][250]
 
         # time.sleep(1)
         degree = 3
-        # t = trange(3, 500 + 3, desc='', leave=True)
-        t = range(3, 500*4 + 3)
+        t = trange(3, 500 + 3, desc='', leave=True)
+        # t = range(3, 500*4 + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
@@ -633,33 +634,42 @@ if __name__ == "__main__":
                               axis=0)
                 amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
             x = np.random.uniform(amin, amax)
-            x = past[-1]
+            # x = past[-1]
             # x[:6] = past[-1][:6]
             action = np.copy(x)
             # action = past[-1]
             if actions is not None:
-                action = actions[i - 3]
+                action = actions[(i - 3)//20]
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
+            X.append(env.get_body_xyz()[0])
+            V.append(env.get_linear_velocity()[0])
             R += reward
             # t.set_description("Reward: " + str(int(100 * R) / 100))
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
 
-            time.sleep(0.005)
-            print(obs[-1])
+            # time.sleep(0.005)
+            # print(obs[-1])
         Obs = np.array(Obs)
         Acs = np.array(Acs)
         O.append(Obs[996:1201, joint])
         A.append(Acs[995:1200, joint])
-        # O.append(Obs[1:21, joint])
-        # A.append(Acs[:20, joint])
-    for j in range(len(Kd)):
-        plt.plot(O[j]-A[j], lw=5, ls=['-', '--', ':', '-.'][j%3], alpha=0.5, label="Kp " + str(Kp[j]) + "- Kd "+str(Kd[j]))
-    plt.legend()
-    plt.show()
+
+        # plt.plot(np.cumsum(Obs[:, -3])*0.001)
+        # plt.show()
+
+        with open("X.pk", 'wb') as f:
+            pickle.dump([X, V], f)
+
+    # for j in range(len(Kd)):
+    #     plt.plot(O[j]-A[j], lw=5, ls=['-', '--', ':', '-.'][j%3], alpha=0.5, label="Kp " + str(Kp[j]) + "- Kd "+str(Kd[j]))
+    # plt.legend()
+    # plt.show()
+
+
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
