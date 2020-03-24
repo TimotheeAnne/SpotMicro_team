@@ -19,7 +19,6 @@ from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 gym.logger.set_level(40)
 
-NUM_SIMULATION_ITERATION_STEPS = 1000
 RENDER_HEIGHT = 360
 RENDER_WIDTH = 480
 
@@ -68,9 +67,9 @@ class SpotMicroEnv(gym.Env):
         else:
             self.pybullet_client = bullet_client.BulletClient(connection_mode=p.DIRECT)
         # Simulation Configuration
-        self.fixedTimeStep = 1. / NUM_SIMULATION_ITERATION_STEPS  # 550
-        self.action_repeat = int(NUM_SIMULATION_ITERATION_STEPS * ctrl_time_step)
-        self.numSolverIterations = int(NUM_SIMULATION_ITERATION_STEPS / self.action_repeat)
+        self.fixedTimeStep = 1. / 1000  # 250
+        self.action_repeat = int(ctrl_time_step/self.fixedTimeStep)
+        self.numSolverIterations = 200
         self.useFixeBased = on_rack
         self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
@@ -540,9 +539,9 @@ if __name__ == "__main__":
     on_rack = 0
 
     (init_joint, real_ub, real_lb) = None, None, None
-    init_joint = np.array([0., -0.6, 1.2]*4)
-    real_ub = np.array([0.2, -0.3, 1.2] * 4)  # max [0.548, 1.548, 2.59]
-    real_lb = np.array([-0.2, -0.8, 0.6] * 4)  # min [-0.548, -2.666, -0.1]
+    init_joint = np.array([0.1, -0.6, 0.7]*2 + [0.1, 0.6, -0.7]*2)
+    real_ub = np.array([0.2, -0.3, 1.2] * 2 + [0.2, 0.3, -1.2] * 2)  # max [0.548, 1.548, 2.59]
+    real_lb = np.array([-0.2, -0.9, 0.2] * 2 + [-0.2, 0.9, -0.2] * 2)  # min [-0.548, -2.666, -0.1]
     kp = [0, 0, 0]*4
     kd = [0., 0.0, 0.05] + [0., 0., 0.] + [0., 0., 0.] + [0., 0., 0.]
 
@@ -579,6 +578,7 @@ if __name__ == "__main__":
         # env.set_kp([10, 5, 3]*4)
 
         init_obs = env.reset()
+        # time.sleep(10)
         # env.metadata["video.frames_per_second"] = 12
 
         recorder = None
@@ -587,8 +587,8 @@ if __name__ == "__main__":
         ub = 1
         lb = -1
 
-        # past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
-        past = [env.init_joint]*3
+        past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
+        # past = [env.init_joint]*3
         max_vel, max_acc, max_jerk = 10, 100, 10000
         dt = 0.02
         R = 0
@@ -639,7 +639,7 @@ if __name__ == "__main__":
             action = np.copy(x)
             # action = past[-1]
             if actions is not None:
-                action = actions[(i - 3)//20]
+                action = actions[(i - 3)]
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
@@ -651,7 +651,7 @@ if __name__ == "__main__":
             if done:
                 break
 
-            # time.sleep(0.005)
+            time.sleep(0.02)
             # print(obs[-1])
         Obs = np.array(Obs)
         Acs = np.array(Acs)
