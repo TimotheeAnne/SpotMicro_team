@@ -15,6 +15,7 @@ import numpy as np
 import gym
 from gym import spaces
 from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+
 # from pynput.keyboard import Key, Listener
 
 gym.logger.set_level(40)
@@ -32,6 +33,7 @@ MOTOR_NAMES = ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_lef
                'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
                'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
                ]
+
 
 class SpotMicroEnv(gym.Env):
     metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 50}
@@ -68,22 +70,22 @@ class SpotMicroEnv(gym.Env):
             self.pybullet_client = bullet_client.BulletClient(connection_mode=p.DIRECT)
         # Simulation Configuration
         self.fixedTimeStep = 1. / 1000  # 250
-        self.action_repeat = int(ctrl_time_step/self.fixedTimeStep)
+        self.action_repeat = int(ctrl_time_step / self.fixedTimeStep)
         self.numSolverIterations = 200
         self.useFixeBased = on_rack
         self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
-        self.kp = np.array([10, 5, 3]*4) if kp is None else kp
-        self.kd = np.array([0.1, 0.1, 0.04]*4) if kd is None else kd
+        self.kp = np.array([10, 5, 3] * 4) if kp is None else kp
+        self.kd = np.array([0.1, 0.1, 0.04] * 4) if kd is None else kd
         self.maxForce = 3
-        self._motor_direction = [-1, 1, 1]*4
+        self._motor_direction = [-1, 1, 1] * 4
         self.mismatch = [0]
         self.shoulder_to_knee = 0.2
         self.knee_to_foot = 0.1
         self.normalized_action = normalized_action
         if init_joint is None:
-            init_joint = [0.1, -0.72, 1.379]*2 + [0.1, -1, 1.379]*2
+            init_joint = [0., 0.6, -1.] * 4
         self.init_joint = init_joint
         self.lateral_friction = 0.8
         self.urdf_model = urdf_model
@@ -98,11 +100,11 @@ class SpotMicroEnv(gym.Env):
             self.lb = np.array(lb)
         elif self.action_space == "Motor":
             self.ub = np.array(
-                [0.2, -0.5, 1.8] * 2 + [0.2, -0.8, 1.8] * 2)  # max [0.548, 1.548, 2.59]
-                # [0.2, -0.5, 1.6]*4)
+                [0.2, 0.3, -1.2] * 4)  # max [0.548, 1.548, 2.59]
+            # [0.2, -0.5, 1.6]*4)
             self.lb = np.array(
-                [-0.1, -0.9, 1.] * 2 + [-0.1, -1.2, 1.] * 2)  # min [-0.548, -2.666, -0.1]
-                # [-0.2, -0.9, 1.1]*4)
+                [-0.2, 0.9, -0.8] * 4)  # min [-0.548, -2.666, -0.1]
+            # [-0.2, -0.9, 1.1]*4)
         elif self.action_space == "S&E":
             """ abduction - swing - extension"""
             self.ub = np.array([0.2, 0.4, 0.25] * 4)  # [0.2, 0.4, 0.25]
@@ -491,11 +493,11 @@ def open_loop_controller(t):
     T = 10
     t = t % T
     w = 2 * np.pi / T
-    a = 1/8
+    a = 1 / 8
 
     S_max = 0.5
 
-    S = trapeze(t, a, T/2)*0.5
+    S = trapeze(t, a, T / 2) * 0.5
     L = 0
     F = 0
 
@@ -503,8 +505,8 @@ def open_loop_controller(t):
     FF = 1.25297262
     RL = - 0.821442
     RF = 1.37963418
-    if a < t < T/4-a:
-        test = (t-a)/a
+    if a < t < T / 4 - a:
+        test = (t - a) / a
     else:
         test = 0
 
@@ -539,10 +541,10 @@ if __name__ == "__main__":
     on_rack = 0
 
     (init_joint, real_ub, real_lb) = None, None, None
-    init_joint = np.array([0.1, -0.6, 0.7]*2 + [0.1, 0.6, -0.7]*2)
-    real_ub = np.array([0.2, -0.3, 1.2] * 2 + [0.2, 0.3, -1.2] * 2)  # max [0.548, 1.548, 2.59]
-    real_lb = np.array([-0.2, -0.9, 0.2] * 2 + [-0.2, 0.9, -0.2] * 2)  # min [-0.548, -2.666, -0.1]
-    kp = [0, 0, 0]*4
+    init_joint = np.array([0., 0.6, -1.] * 4)
+    real_ub = np.array([0.2, 0.3, -1.2] * 4)  # max [0.548, 1.548, 2.59]
+    real_lb = np.array([-0.2, 0.9, -0.8] * 4)  # min [-0.548, -2.666, -0.1]
+    kp = [0, 0, 0] * 4
     kd = [0., 0.0, 0.05] + [0., 0., 0.] + [0., 0., 0.] + [0., 0., 0.]
 
     env = gym.make("SpotMicroEnv-v0",
@@ -669,11 +671,9 @@ if __name__ == "__main__":
     # plt.legend()
     # plt.show()
 
-
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
-
 
     # with open("saved_traj.pk", 'wb') as f:
     #     pickle.dump([Obs, Acs], f)
