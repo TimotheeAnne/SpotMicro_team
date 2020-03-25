@@ -149,11 +149,6 @@ class Cost(object):
                                                    (h - 3) * self.__action_dim: (h - 2) * self.__action_dim]) ** 2)
                     all_costs[start_index: end_index] += torch.sum(action_jerk_cost, axis=1) * self.__discount ** h
 
-                # all_costs[start_index: end_index] += x_vel_cost * self.__discount ** h \
-                #                                      + yaw_cost * self.__discount ** h \
-                #                                      + pitch_cost * self.__discount ** h \
-                #                                      + roll_cost * self.__discount ** h \
-                #                                      + z_cost * self.__discount ** h
                 all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h \
                                                      + -torch.exp(-yaw_cost) * self.__discount ** h \
                                                      + -torch.exp(-pitch_cost) * self.__discount ** h \
@@ -686,7 +681,7 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 1,  # per task
+    "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "test_iterations": 20,
@@ -694,9 +689,9 @@ config = {
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
-    "init_joint": [0.1, -0.6, 0.7] * 2 + [0.1, 0.6, -0.7] * 2,
-    "real_ub": [0.2, -0.3, 1.2] * 2 + [0.2, 0.3, -1.2] * 2,
-    "real_lb": [-0.2, -0.9, 0.2] * 2 + [-0.2, 0.9, -0.2] * 2,
+    "init_joint": [0., 0.6, -1.]*4,
+    "real_ub": [0.2, 0.3, -1.2] * 4,
+    "real_lb": [-0.2, 0.9, -0.8] * 4,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
@@ -716,7 +711,7 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_03",
@@ -826,22 +821,22 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-config['exp_suffix'] = "smothing"
-config_params = []
+# config['exp_suffix'] = "smothing"
+# config_params = []
 
 # config_params.append({'hard_smoothing': 0, "xreward": 0})
 # config_params.append({'hard_smoothing': 0, "xreward": 1})
 
-weights = [[10, 0, 0], [20, 0, 0], [10, 100, 0], [20, 200, 0], [10, 100, 10000], [20, 200, 20000]]
-for j in range(len(weights)):
-    for i in range(2):
-        config_params.append({
-            'hard_smoothing': 1,
-            'xreward': i,
-            "action_vel_weight": weights[j][0],
-            "action_acc_weight": weights[j][1],
-            "action_jerk_weight": weights[j][2]
-        })
+# weights = [[10, 0, 0], [20, 0, 0], [10, 100, 0], [20, 200, 0], [10, 100, 10000], [20, 200, 20000]]
+# for j in range(len(weights)):
+#     for i in range(2):
+#         config_params.append({
+#             'hard_smoothing': 1,
+#             'xreward': i,
+#             "action_vel_weight": weights[j][0],
+#             "action_acc_weight": weights[j][1],
+#             "action_jerk_weight": weights[j][2]
+#         })
 
 
 def apply_config_params(conf, params):
