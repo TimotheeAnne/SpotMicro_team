@@ -39,14 +39,15 @@ class RS_opt(object):
         else:
             if init_mean is None or init_var is None:
                 samples = np.random.uniform(self.lb, self.ub, size=(self.max_iters*self.popsize, self.sol_dim))
-                costs = self.cost_function(samples)
-                return samples[np.argmin(costs)]
+                best = self.cost_function(samples)
+                return best
             else:
                 assert init_mean is not None and init_var is not None, "init mean and var must be provided"
                 samples = np.random.normal(init_mean, init_var, size=(self.max_iters * self.popsize, self.sol_dim))
                 samples = np.clip(samples, self.lb, self.ub)
                 costs = self.cost_function(samples)
                 return samples[np.argmin(costs)]
+
 
 if __name__ == '__main__':
     from test_env import Point
