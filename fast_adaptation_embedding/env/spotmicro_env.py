@@ -576,7 +576,7 @@ if __name__ == "__main__":
                    )
 
     O, A = [], []
-    for iter in tqdm(range(1000)):
+    for iter in tqdm(range(100000)):
         env.set_mismatch([0.])
         init_obs = env.reset()
         # time.sleep(10)
