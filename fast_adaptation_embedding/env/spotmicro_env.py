@@ -541,9 +541,26 @@ if __name__ == "__main__":
     on_rack = 0
 
     # (init_joint, real_ub, real_lb) = None, None, None
+
+    run = 0
+
+    maxis = [[10, 10, 1000], [10, 100, 10000]]
+    bounds = [[[0.1, 0.8, -0.8], [-0.1, 0.4, -1.2]], [[0.2, 0.9, -0.7], [-0.2, 0.3, -1.3]]]
+    config = []
+    for maxi in maxis:
+        for bound in bounds:
+            config.append({'maxi': maxi, 'real_ub': bound[0], 'real_lb': bound[1]})
+
+
     init_joint = np.array([0., 0.6, -1.] * 4)
-    real_ub = np.array([0.1, 0.8, -0.8] * 4)  # max [0.548, 1.548, 2.59]
-    real_lb = np.array([-0.1, 0.4, -1.2] * 4)  # min [-0.548, -2.666, -0.1]
+    real_ub = np.array(config[run]['real_ub'] * 4)  # max [0.548, 1.548, 2.59]
+    real_lb = np.array(config[run]['real_lb'] * 4)  # min [-0.548, -2.666, -0.1]
+
+    max_vel, max_acc, max_jerk = config[run]['maxi']
+
+    max_vel = max_vel * 2 / (real_ub - real_lb)
+    max_acc = max_acc * 2 / (real_ub - real_lb)
+    max_jerk = max_jerk * 2 / (real_ub - real_lb)
 
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -573,11 +590,6 @@ if __name__ == "__main__":
         past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
         # past = [env.init_joint]*3
 
-        max_vel, max_acc, max_jerk = 10, 10, 1000
-
-        max_vel = max_vel*2/(real_ub-real_lb)
-        max_acc = max_acc*2/(real_ub-real_lb)
-        max_jerk = max_jerk*2/(real_ub-real_lb)
         dt = 0.02
         R = 0
         Obs, Acs = [init_obs], []
@@ -591,7 +603,7 @@ if __name__ == "__main__":
 
         degree = 3
         # t = trange(3, 500 + 3, desc='', leave=True)
-        t = range(3, 500*4 + 3)
+        t = range(3, 500 * 4 + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
@@ -642,6 +654,6 @@ if __name__ == "__main__":
             recorder.capture_frame()
             recorder.close()
 
-        if iter+1 % 1000 == 0:
-            with open("data/random_traj_"+str(iter)+".pk", 'wb') as f:
+        if ((iter + 1) % 10000) == 0:
+            with open("data/random_" + str(run) + "_traj_" + str(iter) + ".pk", 'wb') as f:
                 pickle.dump([O, A], f)
