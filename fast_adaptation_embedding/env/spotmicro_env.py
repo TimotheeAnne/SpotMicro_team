@@ -100,10 +100,10 @@ class SpotMicroEnv(gym.Env):
             self.lb = np.array(lb)
         elif self.action_space == "Motor":
             self.ub = np.array(
-                [0.2, 0.3, -1.2] * 4)  # max [0.548, 1.548, 2.59]
+                [0.2, 0.3, -1.2] * 4)  # max [0.548, 1.548, 0.1]
             # [0.2, -0.5, 1.6]*4)
             self.lb = np.array(
-                [-0.2, 0.9, -0.8] * 4)  # min [-0.548, -2.666, -0.1]
+                [-0.2, 0.9, -0.8] * 4)  # min [-0.548, -2.666, -2.59]
             # [-0.2, -0.9, 1.1]*4)
         elif self.action_space == "S&E":
             """ abduction - swing - extension"""
@@ -535,17 +535,15 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import pickle
 
-    render = True
-    # render = False
+    # render = True
+    render = False
 
     on_rack = 0
 
-    (init_joint, real_ub, real_lb) = None, None, None
+    # (init_joint, real_ub, real_lb) = None, None, None
     init_joint = np.array([0., 0.6, -1.] * 4)
-    real_ub = np.array([0.2, 0.3, -1.2] * 4)  # max [0.548, 1.548, 2.59]
-    real_lb = np.array([-0.2, 0.9, -0.8] * 4)  # min [-0.548, -2.666, -0.1]
-    kp = [0, 0, 0] * 4
-    kd = [0., 0.0, 0.05] + [0., 0., 0.] + [0., 0., 0.] + [0., 0., 0.]
+    real_ub = np.array([0.1, 0.8, -0.8] * 4)  # max [0.548, 1.548, 2.59]
+    real_lb = np.array([-0.1, 0.4, -1.2] * 4)  # min [-0.548, -2.666, -0.1]
 
     env = gym.make("SpotMicroEnv-v0",
                    render=render,
@@ -560,28 +558,11 @@ if __name__ == "__main__":
                    ctrl_time_step=0.02
                    )
 
-    env.set_mismatch([0.])
-
-    kd = [0.1]
-    kp = [3]
-
-    Kp, Kd = [], []
-    for p in kp:
-        for d in kd:
-            Kd.append(d)
-            Kp.append(p)
-
-    joint = 2
-    # actions = [[0]*12]*1003 + [[0., -0.6, 1.2]*4]*1000
-    # actions = [[0]*12]*1003 + [[0.4,0., 0.]*4]*1000
     O, A = [], []
-    for j in range(len(Kd)):
-        # env.set_kd([0.1, 0.1, 0.04]*4)
-        # env.set_kp([10, 5, 3]*4)
-
+    for iter in tqdm(range(1000)):
+        env.set_mismatch([0.])
         init_obs = env.reset()
         # time.sleep(10)
-        # env.metadata["video.frames_per_second"] = 12
 
         recorder = None
         # recorder = VideoRecorder(env, "friction_1_slower4.mp4")
@@ -591,22 +572,26 @@ if __name__ == "__main__":
 
         past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
         # past = [env.init_joint]*3
-        max_vel, max_acc, max_jerk = 10, 100, 10000
+
+        max_vel, max_acc, max_jerk = 10, 10, 1000
+
+        max_vel = max_vel*2/(real_ub-real_lb)
+        max_acc = max_acc*2/(real_ub-real_lb)
+        max_jerk = max_jerk*2/(real_ub-real_lb)
         dt = 0.02
         R = 0
         Obs, Acs = [init_obs], []
-        X, V = [], []
-        f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/23_03_2020_12_40_33_experiment/run_0/logs.pk"
-        with open(f, 'rb') as f:
-            data = pickle.load(f)
+
+        # f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/23_03_2020_12_40_33_experiment/run_0/logs.pk"
+        # with open(f, 'rb') as f:
+        #     data = pickle.load(f)
 
         actions = None
         # actions = data['actions'][0][250]
 
-        # time.sleep(1)
         degree = 3
-        t = trange(3, 500 + 3, desc='', leave=True)
-        # t = range(3, 500*4 + 3)
+        # t = trange(3, 500 + 3, desc='', leave=True)
+        t = range(3, 500*4 + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
@@ -639,41 +624,24 @@ if __name__ == "__main__":
             # x = past[-1]
             # x[:6] = past[-1][:6]
             action = np.copy(x)
-            # action = past[-1]
             if actions is not None:
                 action = actions[(i - 3)]
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
-            X.append(env.get_body_xyz()[0])
-            V.append(env.get_linear_velocity()[0])
             R += reward
-            # t.set_description("Reward: " + str(int(100 * R) / 100))
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
 
-            time.sleep(0.02)
-            # print(obs[-1])
-        Obs = np.array(Obs)
-        Acs = np.array(Acs)
-        O.append(Obs[996:1201, joint])
-        A.append(Acs[995:1200, joint])
+            # time.sleep(0.02)
+        O.append(np.copy(Obs))
+        A.append(np.copy(Acs))
 
-        # plt.plot(np.cumsum(Obs[:, -3])*0.001)
-        # plt.show()
+        if recorder is not None:
+            recorder.capture_frame()
+            recorder.close()
 
-        with open("X.pk", 'wb') as f:
-            pickle.dump([X, V], f)
-
-    # for j in range(len(Kd)):
-    #     plt.plot(O[j]-A[j], lw=5, ls=['-', '--', ':', '-.'][j%3], alpha=0.5, label="Kp " + str(Kp[j]) + "- Kd "+str(Kd[j]))
-    # plt.legend()
-    # plt.show()
-
-    if recorder is not None:
-        recorder.capture_frame()
-        recorder.close()
-
-    # with open("saved_traj.pk", 'wb') as f:
-    #     pickle.dump([Obs, Acs], f)
+        if iter+1 % 1000 == 0:
+            with open("data/random_traj_"+str(iter)+".pk", 'wb') as f:
+                pickle.dump([O, A], f)
