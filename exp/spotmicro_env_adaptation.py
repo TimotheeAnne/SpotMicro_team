@@ -71,26 +71,24 @@ class Cost(object):
         # compute the samples for hard smoothing
         ad = self.__action_dim
         max_vel = torch.FloatTensor(self.__max_vel).cuda()
+        max_acc = torch.FloatTensor(self.__max_acc).cuda()
+        max_jerk = torch.FloatTensor(self.__max_jerk).cuda()
         if self.__hard_smoothing:
             for t in range(3, int(self.__sol_dim / ad) + 3):
-                # amax = torch.min(a[:, (t - 1) * ad:t * ad] + self.__max_vel,
-                #                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] + self.__max_acc,
-                #                  out=None)
-                # amax = torch.min(amax,
-                #                  3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, (
-                #                                                                                                     t - 3) * ad:(
-                #                                                                                                                         t - 2) * ad] + self.__max_jerk,
-                #                  out=None)
-                # amin = torch.max(a[:, (t - 1) * ad:t * ad] - self.__max_vel,
-                #                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] - self.__max_acc,
-                #                  out=None)
-                # amin = torch.max(amin,
-                #                  3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, (
-                #                                                                                                     t - 3) * ad:(
-                #                                                                                                                         t - 2) * ad] - self.__max_jerk,
-                #                  out=None)
-                amax = a[:, (t - 1) * ad:t * ad] + max_vel
-                amin = a[:, (t - 1) * ad:t * ad] - max_vel
+                amax = torch.min(a[:, (t - 1) * ad:t * ad] + max_vel,
+                                 2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] + max_acc,
+                                 out=None)
+                amax = torch.min(amax,
+                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, ( t - 3) * ad:(t - 2) * ad] + max_jerk,
+                                 out=None)
+                amin = torch.max(a[:, (t - 1) * ad:t * ad] - max_vel,
+                                 2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] - max_acc,
+                                 out=None)
+                amin = torch.max(amin,
+                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, (
+                                                                                                                    t - 3) * ad:(
+                                                                                                                                        t - 2) * ad] - max_jerk,
+                                 out=None)
                 amax, amin = torch.clamp(amax, self.__lb, self.__ub), torch.clamp(amin, self.__lb,
                                                                                   self.__ub)
                 if torch.sum(amax > amin) != self.__popsize * ad:
@@ -452,9 +450,11 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         import json
         json.dump(config, fp)
 
-    config['max_action_velocity'] = np.array(config['max_action_velocity']) * config['ctrl_time_step']
-    config['max_action_acceleration'] = np.array(config['max_action_acceleration']) * config['ctrl_time_step']**2
-    config['max_action_jerk'] = np.array(config['max_action_jerk']) * config['ctrl_time_step']**3
+    alpha = (np.array(config['real_ub'])-np.array(config['real_lb']))/2
+    config['max_action_velocity'] = config['max_action_velocity']/alpha * config['ctrl_time_step']
+    config['max_action_acceleration'] = config['max_action_acceleration']/alpha * config['ctrl_time_step']**2
+    config['max_action_jerk'] = config['max_action_jerk']/alpha * config['ctrl_time_step']**3
+
     # **********************************
     n_task = len(mismatches)
     data = n_task * [None]
@@ -696,8 +696,8 @@ config = {
     "action_space": ['S&E', 'Motor'][1],
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
     "init_joint": [0., 0.6, -1.] * 4,
-    "real_ub": [0.2, 0.3, -1.2] * 4,
-    "real_lb": [-0.2, 0.9, -0.8] * 4,
+    "real_ub": [0.1, 0.8, -0.8] * 4,
+    "real_lb": [-0.1, 0.4, -1.2] * 4,
     "partial_torque_control": 0,
     "vkp": 0,
     "goal": None,  # Sampled during env reset
@@ -718,7 +718,7 @@ config = {
 
     # logging
     "record_video": 1,
-    "video_recording_frequency": 25,
+    "video_recording_frequency": 10,
     "result_dir": "results",
     "env_name": "spot_micro_03",
     "exp_suffix": "experiment",
@@ -749,9 +749,9 @@ config = {
     "epsilon": 0.0001,
     "lb": -1,
     "ub": 1,
-    "max_action_velocity": 8,  # 10 from working controller
-    "max_action_acceleration": 100 * 10000000,  # 100 from working controller
-    "max_action_jerk": 10000 * 10000000,  # 10000 from working controller
+    "max_action_velocity": 10,  # 10 from working controller
+    "max_action_acceleration": 100,  # 100 from working controller
+    "max_action_jerk": 10000,  # 10000 from working controller
     "max_torque_jerk": 25,
     "popsize": 10000,
     "sol_dim": None,  # NOTE: Depends on Horizon
@@ -822,20 +822,17 @@ config['test_mismatches'] = test_mismatches
 
 args = ["SpotMicroEnv-v0"]
 
-config_params = None
+# config_params = None
 
-config['exp_suffix'] = "action_bounds"
+config['exp_suffix'] = "smoothing"
 config_params = []
-
-delta_thights = [0.3, 0.6, 0.9]
-delta_calfs = [0.2, 0.4, 0.6]
-for delta_thight in delta_thights:
-    for delta_calf in delta_calfs:
-        config_params.append({
-            "real_ub": [0.2, 0.6 + delta_thight, -1. + delta_calf] * 4,
-            "real_lb": [-0.2, 0.6 - delta_thight, -1 - delta_calf] * 4,
-            "max_action_velocity": [8/0.2, 8/delta_thight, 8/delta_calf]*4
-        })
+A = [0.1, 0.2, 0.5, 1, 2, 5, 10]
+for a in A:
+    config_params.append({
+        "max_action_velocity": 10*a,
+        "max_action_acceleration": 100*a,
+        "max_action_jerk": 10000*a,
+    })
 
 
 def apply_config_params(conf, params):
