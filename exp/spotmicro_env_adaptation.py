@@ -718,7 +718,7 @@ config = {
 
     # logging
     "record_video": 1,
-    "video_recording_frequency": 10,
+    "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_03",
     "exp_suffix": "experiment",
@@ -809,7 +809,8 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [0., -0.75],
+    [0.],
+    [-0.75],
 ])
 
 # test_mismatches = None
