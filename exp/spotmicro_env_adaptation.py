@@ -690,7 +690,7 @@ config = {
     "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
-    "test_iterations": 20,
+    "test_iterations": 30,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -749,9 +749,9 @@ config = {
     "epsilon": 0.0001,
     "lb": -1,
     "ub": 1,
-    "max_action_velocity": 10,  # 10 from working controller
-    "max_action_acceleration": 100,  # 100 from working controller
-    "max_action_jerk": 10000,  # 10000 from working controller
+    "max_action_velocity": 8,  # 10 from working controller
+    "max_action_acceleration": 80,  # 100 from working controller
+    "max_action_jerk": 8000,  # 10000 from working controller
     "max_torque_jerk": 25,
     "popsize": 10000,
     "sol_dim": None,  # NOTE: Depends on Horizon
@@ -809,30 +809,26 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [0.],
+    [0., -0.75],
 ])
 
-test_mismatches = None
-# test_mismatches = [
-#     [0.25],
-#     [-0.75]
-# ]
+# test_mismatches = None
+test_mismatches = [
+    [0.],
+    [-0.75]
+]
 
 config['test_mismatches'] = test_mismatches
 
 args = ["SpotMicroEnv-v0"]
 
-# config_params = None
+config_params = None
 
-config['exp_suffix'] = "smoothing"
+config['exp_suffix'] = "Slippery_floor"
 config_params = []
-A = [0.1, 0.2, 0.5, 1, 2, 5, 10]
-for a in A:
-    config_params.append({
-        "max_action_velocity": 10*a,
-        "max_action_acceleration": 100*a,
-        "max_action_jerk": 10000*a,
-    })
+
+for _ in range(20):
+    config_params.append({})
 
 
 def apply_config_params(conf, params):
