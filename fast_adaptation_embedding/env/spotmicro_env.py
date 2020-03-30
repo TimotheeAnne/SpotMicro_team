@@ -10,6 +10,7 @@ os.sys.path.insert(0, parentdir)
 import pybullet_data
 import time
 import pybullet as p
+from pybullet import DIRECT, GUI
 import math
 import numpy as np
 import gym
@@ -65,9 +66,9 @@ class SpotMicroEnv(gym.Env):
 
         self.is_render = render
         if self.is_render:
-            self.pybullet_client = bullet_client.BulletClient(connection_mode=p.GUI)
+            self.pybullet_client = bullet_client.BulletClient(connection_mode=GUI)
         else:
-            self.pybullet_client = bullet_client.BulletClient(connection_mode=p.DIRECT)
+            self.pybullet_client = bullet_client.BulletClient(connection_mode=DIRECT)
         # Simulation Configuration
         self.fixedTimeStep = 1. / 1000  # 250
         self.action_repeat = int(ctrl_time_step / self.fixedTimeStep)
@@ -156,7 +157,7 @@ class SpotMicroEnv(gym.Env):
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
-        urdf_model = 'urdf/spotmicroai_sphere_feet.xml' if self.urdf_model == 'sphere' else 'urdf/spotmicroai_gen.urdf.xml'
+        # urdf_model = 'urdf/spotmicroai_sphere_feet.xml' if self.urdf_model == 'sphere' else 'urdf/spotmicroai_gen.urdf.xml'
         urdf_model = 'spot_micro_urdf/urdf/spot_micro_urdf.urdf.xml'
         quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
                                                   self.init_oritentation,
@@ -377,15 +378,16 @@ class SpotMicroEnv(gym.Env):
         [friction] = mismatch
         self.lateral_friction = 0.8 * friction + 0.8
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
-        if self.lateral_friction >= 0.8:
-            friction_level = 2
+        if self.lateral_friction > 0.8:
+            friction_level = "striped"
+        elif self.lateral_friction == 0.8:
+            friction_level = "checker_blue"
         elif self.lateral_friction <= 0.2:
-            friction_level = 0
+            friction_level = "checker_red"
         else:
-            friction_level = 1
-        texUid = self.pybullet_client.loadTexture(
-            currentdir + "/assets/" + ["checker_red", "checker_purple", "striped"][friction_level] + ".png")
-        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=texUid)
+            friction_level = "checker_purple"
+        texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
+        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=texture_id)
 
     def get_observation_upper_bound(self):
         """Get the upper bound of the observation.
@@ -544,13 +546,12 @@ if __name__ == "__main__":
 
     run = 0
 
-    maxis = [[10, 10, 1000], [10, 100, 10000]]
-    bounds = [[[0.1, 0.8, -0.8], [-0.1, 0.4, -1.2]], [[0.2, 0.9, -0.7], [-0.2, 0.3, -1.3]]]
+    maxis = [[10, 10, 1000]]
+    bounds = [[[0.1, 0.8, -0.8], [-0.1, 0.4, -1.2]]]
     config = []
     for maxi in maxis:
         for bound in bounds:
             config.append({'maxi': maxi, 'real_ub': bound[0], 'real_lb': bound[1]})
-
 
     init_joint = np.array([0., 0.6, -1.] * 4)
     real_ub = np.array(config[run]['real_ub'] * 4)  # max [0.548, 1.548, 2.59]
@@ -562,22 +563,23 @@ if __name__ == "__main__":
     max_acc = max_acc * 2 / (real_ub - real_lb)
     max_jerk = max_jerk * 2 / (real_ub - real_lb)
 
-    env = gym.make("SpotMicroEnv-v0",
-                   render=render,
-                   on_rack=on_rack,
-                   action_space=["S&E", "Motor"][1],
-                   init_joint=init_joint,
-                   ub=real_ub,
-                   lb=real_lb,
-                   urdf_model='sphere',
-                   inspection=True,
-                   normalized_action=1,
-                   ctrl_time_step=0.02
-                   )
+    envs = [gym.make("SpotMicroEnv-v0",
+                     render=render,
+                     on_rack=on_rack,
+                     action_space=["S&E", "Motor"][1],
+                     init_joint=init_joint,
+                     ub=real_ub,
+                     lb=real_lb,
+                     urdf_model='sphere',
+                     inspection=True,
+                     normalized_action=1,
+                     ctrl_time_step=0.02
+                     ) for _ in range(3)]
 
+    env = envs[2]
     O, A = [], []
-    for iter in tqdm(range(100000)):
-        env.set_mismatch([0.])
+    for iter in tqdm(range(1)):
+        env.set_mismatch([-0.75])
         init_obs = env.reset()
         # time.sleep(10)
 
@@ -639,21 +641,18 @@ if __name__ == "__main__":
             if actions is not None:
                 action = actions[(i - 3)]
             obs, reward, done, info = env.step(action)
+            print(obs[:3])
             Obs.append(obs)
             Acs.append(action)
             R += reward
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
-
-            # time.sleep(0.02)
+            if render:
+                time.sleep(0.02)
         O.append(np.copy(Obs))
         A.append(np.copy(Acs))
 
         if recorder is not None:
             recorder.capture_frame()
             recorder.close()
-
-        if ((iter + 1) % 10000) == 0:
-            with open("data/random_" + str(run) + "_traj_" + str(iter) + ".pk", 'wb') as f:
-                pickle.dump([O, A], f)

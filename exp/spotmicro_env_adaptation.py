@@ -247,12 +247,12 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
 
 
 def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, pred_high,
-            pred_low, K, index_iter, final_iter, samples, env_index, n_task, test=False):
-    index_iter = index_iter // n_task if test else (index_iter // n_task - config["random_episodes"])
+            pred_low, K, index_iter, final_iter, samples, env_index, n_task, n_model=0, model_index=0, test=False):
+    index_iter = index_iter // (n_task*n_model) if test else (index_iter // n_task - config["random_episodes"])
     if config['record_video']:
         if test and (index_iter % config['video_recording_frequency'] == 0 or index_iter == final_iter - 1):
-            recorder = VideoRecorder(env, config['logdir'] + "/videos/" + "test_env_" + str(env_index) + "_run_" + str(
-                index_iter) + ".mp4")
+            recorder = VideoRecorder(env, config['logdir'] + "/videos/" + "test_env_" + str(env_index) + "_model_" +
+                                     str(model_index) + "_run_" + str(index_iter) + ".mp4")
         elif not test and ((index_iter % config['video_recording_frequency'] == 0) or (
                 index_iter == final_iter - config["random_episodes"] - 1)):
             recorder = VideoRecorder(env, config['logdir'] + "/videos/env_" + str(env_index) + "_run_" + str(
@@ -485,10 +485,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         config["random_episodes"] = 0
         n_task = len(mismatches)
 
-    envs = [gym.make(*gym_args, **gym_kwargs) for i in range(n_task)]
-    for i, e in enumerate(envs):
-        e.set_mismatch(mismatches[i])
-        e.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
+    env = gym.make(*gym_args, **gym_kwargs)
+    env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
 
     for i in range(n_task):
         with open(res_dir + "/costs_task_" + str(i) + ".txt", "w+") as f:
@@ -498,7 +496,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     t = trange(config["iterations"] * n_task, desc='', leave=True)
     for index_iter in t:
         env_index = int(index_iter % n_task)
-        env = envs[env_index]
+        env.set_mismatch(mismatches[env_index])
 
         samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
         if data[env_index] is None or index_iter < config["random_episodes"] * n_task:
@@ -588,40 +586,40 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
     for env_index in range(n_task):
         os.makedirs(res_dir + "/models/ensemble_" + str(env_index))
-        # test_model(models[env_index], init_state=np.zeros(32), action=np.zeros(12), state_diff=np.zeros(32), to_print=1)
         models[env_index].save(file_path=res_dir + "/models/ensemble_" + str(env_index) + "/")
 
     if config['test_mismatches'] is not None:
         test_mismatches = config['test_mismatches']
         n_task = len(test_mismatches)
 
-        traj_obs, traj_acs, traj_reward, traj_rewards = [[] for _ in range(n_task)], [[] for _ in range(n_task)], \
-                                                        [[] for _ in range(n_task)], [[] for _ in range(n_task)]
-        traj_observed_torques, traj_desired_torques = [[] for _ in range(n_task)], [[] for _ in range(n_task)]
+        traj_obs = [[[] for _ in range(n_task)] for _ in range(len(models))]
+        traj_acs = [[[] for _ in range(n_task)] for _ in range(len(models))]
+        traj_reward = [[[] for _ in range(n_task)] for _ in range(len(models))]
+        traj_rewards = [[[] for _ in range(n_task)] for _ in range(len(models))]
+        traj_observed_torques = [[[] for _ in range(n_task)] for _ in range(len(models))]
+        traj_desired_torques = [[[] for _ in range(n_task)] for _ in range(len(models))]
         best_reward, best_distance = -np.inf, -np.inf
         gym_kwargs['render'] = True
-        envs = [gym.make(*gym_args, **gym_kwargs) for i in range(n_task)]
-        for i, e in enumerate(envs):
-            e.set_mismatch(test_mismatches[i])
-            # e.render("human")
 
         for i in range(n_task):
-            with open(res_dir + "/test_costs_task_" + str(i) + ".txt", "w+") as f:
-                f.write("")
+            for j in range(len(models)):
+                with open(res_dir + "/test_model_"+str(j)+"_costs_task_" + str(i) + ".txt", "w+") as f:
+                    f.write("")
 
         np.save(res_dir + '/test_mismatches.npy', mismatches)
-        t = trange(config["test_iterations"] * n_task, desc='', leave=True)
+        t = trange(config["test_iterations"] * n_task * len(models), desc='', leave=True)
         for index_iter in t:
             '''Pick a random environment'''
-            env_index = int(index_iter % n_task)  # np.random.randint(0, n_task)
-            env = envs[env_index]
-
+            env_index = int(index_iter/len(models)) % n_task  # np.random.randint(0, n_task)
+            env.set_mismatch(test_mismatches[env_index])
+            model_index = index_iter % len(models)
             samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
 
             '''------------Update models------------'''
             _, c = execute(env=env,
                            init_state=config["init_state"],
-                           model=models[0],
+                           model=models[model_index],
+                           model_index=model_index,
                            steps=config["episode_length"],
                            init_mean=best_action_seq[0:config["sol_dim"]],
                            init_var=0.1 * np.ones(config["sol_dim"]),
@@ -635,17 +633,18 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                            samples=samples,
                            env_index=env_index,
                            n_task=n_task,
+                           n_model=len(models),
                            test=True)
 
-            with open(res_dir + "/test_costs_task_" + str(env_index) + ".txt", "a+") as f:
+            with open(res_dir + "/test_model_"+str(model_index)+"_costs_task_" + str(env_index) + ".txt", "a+") as f:
                 f.write(str(c) + "\n")
 
-            traj_obs[env_index].extend(samples["obs"])
-            traj_acs[env_index].extend(samples["acs"])
-            traj_reward[env_index].extend(samples["reward"])
-            traj_rewards[env_index].extend(samples["rewards"])
-            traj_desired_torques[env_index].extend(samples["desired_torques"])
-            traj_observed_torques[env_index].extend(samples["observed_torques"])
+            traj_obs[model_index][env_index].extend(samples["obs"])
+            traj_acs[model_index][env_index].extend(samples["acs"])
+            traj_reward[model_index][env_index].extend(samples["reward"])
+            traj_rewards[model_index][env_index].extend(samples["rewards"])
+            traj_desired_torques[model_index][env_index].extend(samples["desired_torques"])
+            traj_observed_torques[model_index][env_index].extend(samples["observed_torques"])
 
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
@@ -690,7 +689,7 @@ config = {
     "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
-    "test_iterations": 30,
+    "test_iterations": 20,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -809,8 +808,8 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [0.],
     [-0.75],
+    [0.],
 ])
 
 # test_mismatches = None
@@ -828,7 +827,7 @@ config_params = None
 config['exp_suffix'] = "Slippery_floor"
 config_params = []
 
-for _ in range(20):
+for _ in range(10):
     config_params.append({})
 
 
