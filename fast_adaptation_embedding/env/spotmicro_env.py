@@ -136,6 +136,7 @@ class SpotMicroEnv(gym.Env):
         observation_high = (self.get_observation_upper_bound())
         observation_low = (self.get_observation_lower_bound())
         self.observation_space = spaces.Box(observation_low, observation_high, dtype=np.float32)
+        self.set_mismatch([0.8, 0, 0])
 
     def _BuildJointNameToIdDict(self):
         num_joints = self.pybullet_client.getNumJoints(self.quadruped)
@@ -389,7 +390,7 @@ class SpotMicroEnv(gym.Env):
 
     def set_mismatch(self, mismatch):
         self.mismatch = mismatch
-        [friction, wind_angle, wind_force] = mismatch
+        [friction, wind_angle, wind_force] = self.mismatch
         assert 0 <= friction, 'friction must be non-negative'
         self.lateral_friction = friction
         self.wind_angle = wind_angle
