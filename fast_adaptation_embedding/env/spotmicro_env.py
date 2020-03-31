@@ -165,6 +165,10 @@ class SpotMicroEnv(gym.Env):
                                                   useMaximalCoordinates=False,
                                                   flags=flags)
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+        self.arrow = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/arrow.urdf.xml",
+                                                   [0, 0, -2],
+                                                   p.getQuaternionFromEuler((0, 0, 0)))
+
         return quadruped
 
     def set_kd(self, kd):
@@ -311,6 +315,16 @@ class SpotMicroEnv(gym.Env):
                                                        jointIndices=self._motor_id_list,
                                                        controlMode=self.pybullet_client.TORQUE_CONTROL,
                                                        forces=np.multiply(PD_torque, self._motor_direction))
+        wind_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
+        if self.wind_force > 0:
+            self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
+                                                    linkIndex=0,
+                                                    forceObj=wind_force,
+                                                    posObj=self.get_body_xyz(),
+                                                    flags=p.WORLD_FRAME)
+            [x,y,_]  =self.get_body_xyz()
+            self.pybullet_client.resetBasePositionAndOrientation(self.arrow, [x, y+0.025, 0.3],
+                                                                 p.getQuaternionFromEuler([1.57, 0, 1.48+self.wind_angle]))
         self.pybullet_client.stepSimulation()
 
     def _filter_velocities(self, x):
@@ -375,8 +389,11 @@ class SpotMicroEnv(gym.Env):
 
     def set_mismatch(self, mismatch):
         self.mismatch = mismatch
-        [friction] = mismatch
-        self.lateral_friction = 0.8 * friction + 0.8
+        [friction, wind_angle, wind_force] = mismatch
+        assert 0 <= friction, 'friction must be non-negative'
+        self.lateral_friction = friction
+        self.wind_angle = wind_angle
+        self.wind_force = wind_force
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         if self.lateral_friction > 0.8:
             friction_level = "striped"
@@ -537,8 +554,8 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import pickle
 
-    # render = True
-    render = False
+    render = True
+    # render = False
 
     on_rack = 0
 
@@ -563,25 +580,24 @@ if __name__ == "__main__":
     max_acc = max_acc * 2 / (real_ub - real_lb)
     max_jerk = max_jerk * 2 / (real_ub - real_lb)
 
-    envs = [gym.make("SpotMicroEnv-v0",
-                     render=render,
-                     on_rack=on_rack,
-                     action_space=["S&E", "Motor"][1],
-                     init_joint=init_joint,
-                     ub=real_ub,
-                     lb=real_lb,
-                     urdf_model='sphere',
-                     inspection=True,
-                     normalized_action=1,
-                     ctrl_time_step=0.02
-                     ) for _ in range(3)]
+    env = gym.make("SpotMicroEnv-v0",
+                   render=render,
+                   on_rack=on_rack,
+                   action_space=["S&E", "Motor"][1],
+                   init_joint=init_joint,
+                   ub=real_ub,
+                   lb=real_lb,
+                   urdf_model='sphere',
+                   inspection=True,
+                   normalized_action=1,
+                   ctrl_time_step=0.02
+                   )
 
-    env = envs[2]
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch([-0.75])
+        env.set_mismatch([0., -np.pi/2, 0])
         init_obs = env.reset()
-        # time.sleep(10)
+        time.sleep(100)
 
         recorder = None
         # recorder = VideoRecorder(env, "friction_1_slower4.mp4")
@@ -641,7 +657,6 @@ if __name__ == "__main__":
             if actions is not None:
                 action = actions[(i - 3)]
             obs, reward, done, info = env.step(action)
-            print(obs[:3])
             Obs.append(obs)
             Acs.append(action)
             R += reward
