@@ -21,8 +21,10 @@ import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
 
-
-# from pynput.keyboard import Key, Listener
+try:
+    from pynput.keyboard import Key, Listener
+except:
+    print('Cannot use online testing')
 
 
 class Cost(object):
@@ -79,7 +81,9 @@ class Cost(object):
                                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] + max_acc,
                                  out=None)
                 amax = torch.min(amax,
-                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, ( t - 3) * ad:(t - 2) * ad] + max_jerk,
+                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:,
+                                                                                                       (t - 3) * ad:(
+                                                                                                                                t - 2) * ad] + max_jerk,
                                  out=None)
                 amin = torch.max(a[:, (t - 1) * ad:t * ad] - max_vel,
                                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] - max_acc,
@@ -248,7 +252,7 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
 
 def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, pred_high,
             pred_low, K, index_iter, final_iter, samples, env_index, n_task, n_model=0, model_index=0, test=False):
-    index_iter = index_iter // (n_task*n_model) if test else (index_iter // n_task - config["random_episodes"])
+    index_iter = index_iter // (n_task * n_model) if test else (index_iter // n_task - config["random_episodes"])
     if config['record_video']:
         if test and (index_iter % config['video_recording_frequency'] == 0 or index_iter == final_iter - 1):
             recorder = VideoRecorder(env, config['logdir'] + "/videos/" + "test_env_" + str(env_index) + "_model_" +
@@ -319,33 +323,35 @@ def execute_online(env, model, config, pred_high, pred_low, K):
                                                   config['max_action_jerk'], config['max_torque_jerk']
     lb, ub = config['lb'], config['ub']
 
-    # def on_press(key):
-    #     if key == Key.left:
-    #         env.reset()
-    #         past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
-    #     elif key == Key.right:
-    #         event[0] = None
-    #     elif key == Key.down:
-    #         event[0] = 'pause'
-    #
-    # def on_release(key):
-    #     if key == Key.esc:
-    #         return False
+    def on_press(key):
+        if key == Key.left:
+            env.set_mismatch([friction, wind_direction, wind_force])
+            env.reset()
+            past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
+        elif key == Key.right:
+            event[0] = None
+        elif key == Key.down:
+            event[0] = 'pause'
 
-    config['max_action_velocity'], config['max_action_acceleration'], config['max_action_jerk'] = 20, 100, 10000
+    def on_release(key):
+        if key == Key.esc:
+            return False
 
     IDvd = env.pybullet_client.addUserDebugParameter("Desired velocity", -0.5, 0.5, 1)
     IDcontrol = env.pybullet_client.addUserDebugParameter("Random - MPC", 0, 1, 1)
     IDsmooth = env.pybullet_client.addUserDebugParameter("Smooth", 0, 1, 1)
     IDpopsize = env.pybullet_client.addUserDebugParameter("population size (10^x)", 0, 5, 4)
     IDhorizon = env.pybullet_client.addUserDebugParameter("Horizon", 1, 50, 25)
+    IDfriction = env.pybullet_client.addUserDebugParameter("Friction", 0, 0.8, 0.8)
+    IDwind_force = env.pybullet_client.addUserDebugParameter("wind force", 0, 2, 0)
+    IDwind_direction = env.pybullet_client.addUserDebugParameter("wind direction", -3.14, 3.14, 0)
     # Collect events until released
-    # listener = Listener(on_press=on_press, on_release=on_release)
-    # listener.start()
+    listener = Listener(on_press=on_press, on_release=on_release)
+    listener.start()
 
     t = trange(500, desc='', leave=True)
-    # while True:
-    for _ in t:
+    while True:
+        # for _ in t:
         if event[0] != 'pause':
             vd = env.pybullet_client.readUserDebugParameter(IDvd)
             env.set_desired_speed(vd)
@@ -353,6 +359,9 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             smooth = env.pybullet_client.readUserDebugParameter(IDsmooth) > 0
             popsize = env.pybullet_client.readUserDebugParameter(IDpopsize)
             horizon = env.pybullet_client.readUserDebugParameter(IDhorizon)
+            friction = env.pybullet_client.readUserDebugParameter(IDfriction)
+            wind_force = env.pybullet_client.readUserDebugParameter(IDwind_force)
+            wind_direction = env.pybullet_client.readUserDebugParameter(IDwind_direction)
             config['popsize'] = int(10 ** popsize)
             config['horizon'] = int(horizon)
             config['sol_dim'] = config['horizon'] * config['action_dim']
@@ -450,10 +459,10 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         import json
         json.dump(config, fp)
 
-    alpha = (np.array(config['real_ub'])-np.array(config['real_lb']))/2
-    config['max_action_velocity'] = config['max_action_velocity']/alpha * config['ctrl_time_step']
-    config['max_action_acceleration'] = config['max_action_acceleration']/alpha * config['ctrl_time_step']**2
-    config['max_action_jerk'] = config['max_action_jerk']/alpha * config['ctrl_time_step']**3
+    alpha = (np.array(config['real_ub']) - np.array(config['real_lb'])) / 2
+    config['max_action_velocity'] = config['max_action_velocity'] / alpha * config['ctrl_time_step']
+    config['max_action_acceleration'] = config['max_action_acceleration'] / alpha * config['ctrl_time_step'] ** 2
+    config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
 
     # **********************************
     n_task = len(mismatches)
@@ -603,14 +612,14 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         for i in range(n_task):
             for j in range(len(models)):
-                with open(res_dir + "/test_model_"+str(j)+"_costs_task_" + str(i) + ".txt", "w+") as f:
+                with open(res_dir + "/test_model_" + str(j) + "_costs_task_" + str(i) + ".txt", "w+") as f:
                     f.write("")
 
         np.save(res_dir + '/test_mismatches.npy', mismatches)
         t = trange(config["test_iterations"] * n_task * len(models), desc='', leave=True)
         for index_iter in t:
             '''Pick a random environment'''
-            env_index = int(index_iter/len(models)) % n_task  # np.random.randint(0, n_task)
+            env_index = int(index_iter / len(models)) % n_task  # np.random.randint(0, n_task)
             env.set_mismatch(test_mismatches[env_index])
             model_index = index_iter % len(models)
             samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
@@ -636,7 +645,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                            n_model=len(models),
                            test=True)
 
-            with open(res_dir + "/test_model_"+str(model_index)+"_costs_task_" + str(env_index) + ".txt", "a+") as f:
+            with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt",
+                      "a+") as f:
                 f.write(str(c) + "\n")
 
             traj_obs[model_index][env_index].extend(samples["obs"])
@@ -676,6 +686,10 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
     env.set_mismatch(mismatches[0])
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
     env.render("human")
+    alpha = (np.array(config['real_ub']) - np.array(config['real_lb'])) / 2
+    config['max_action_velocity'] = config['max_action_velocity'] / alpha * config['ctrl_time_step']
+    config['max_action_acceleration'] = config['max_action_acceleration'] / alpha * config['ctrl_time_step'] ** 2
+    config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
     execute_online(env=env, model=models, config=config, pred_high=None, pred_low=None, K=config['K'])
 
 
@@ -686,7 +700,7 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 25,  # per task
+    "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "test_iterations": 20,
@@ -808,14 +822,14 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = np.array([
-    [-0.75],
-    [0.],
+    [0.2, 0, 0],
+    [0.8, 0, 0],
 ])
 
 # test_mismatches = None
 test_mismatches = [
-    [0.],
-    [-0.75]
+    [0.2, 0, 0],
+    [0.8, 0, 0]
 ]
 
 config['test_mismatches'] = test_mismatches
@@ -824,11 +838,12 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 
-config['exp_suffix'] = "Slippery_floor"
-config_params = []
 
-for _ in range(10):
-    config_params.append({})
+# config['exp_suffix'] = "Slippery_floor"
+# config_params = []
+#
+# for _ in range(10):
+#     config_params.append({})
 
 
 def apply_config_params(conf, params):
@@ -858,8 +873,8 @@ def env_args_from_config(config):
     }
 
 
-online = False
-# online = True
+# online = False
+online = True
 
 if online:
     config["xreward"] = 1
@@ -869,12 +884,12 @@ if online:
     # config["init_joint"] = [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2
     # config["real_ub"] = [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2
     # config["real_lb"] = [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2
-    path = "/home/timothee/Documents/SpotMicro_team/exp/results/"
-    directory = ['09_03_2020_12_03_21_experiment', '09_03_2020_16_04_23_action_bounds'][1]
+    path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
+    directory = ['27_03_2020_11_04_21_Slippery_floor'][0]
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
-    online_mismatches = [[0.25]]
+    online_mismatches = [[0.8, 0, 0]]
     online_test(gym_args=args, gym_kwargs=kwargs, mismatches=online_mismatches, config=config)
 else:
     n_run = 1 if config_params is None else len(config_params)
