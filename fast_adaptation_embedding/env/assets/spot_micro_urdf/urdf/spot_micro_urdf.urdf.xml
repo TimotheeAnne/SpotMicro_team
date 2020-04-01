@@ -4,6 +4,15 @@
      For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
 <robot
   name="spot_micro_urdf">
+  <material name="blue">
+    <color rgba="0. 0.7 1 1"/>
+  </material>
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1"/>
+  </material>
+  <material name="grey">
+    <color rgba="0.6 0.6 0.6 1"/>
+  </material>
   <link
     name="base_link">
     <inertial>
@@ -29,9 +38,7 @@
           filename="package://spot_micro_urdf/meshes/base_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.79216 0.81961 0.93333 1" />
+        name="blue">
       </material>
     </visual>
     <collision>
@@ -69,9 +76,7 @@
           filename="package://spot_micro_urdf/meshes/front_left_shoulder_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.79216 0.81961 0.93333 1" />
+        name="black">
       </material>
     </visual>
     <collision>
@@ -127,9 +132,7 @@
           filename="package://spot_micro_urdf/meshes/front_left_thigh_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="blue">
       </material>
     </visual>
     <collision>
@@ -185,9 +188,7 @@
           filename="package://spot_micro_urdf/meshes/front_left_calf_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="grey">
       </material>
     </visual>
     <collision>
@@ -243,9 +244,7 @@
           filename="package://spot_micro_urdf/meshes/rear_left_shoulder_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="black">
       </material>
     </visual>
     <collision>
@@ -301,9 +300,7 @@
           filename="package://spot_micro_urdf/meshes/rear_left_thigh_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="blue">
       </material>
     </visual>
     <collision>
@@ -359,9 +356,7 @@
           filename="package://spot_micro_urdf/meshes/rear_left_calf_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="grey">
       </material>
     </visual>
     <collision>
@@ -417,9 +412,7 @@
           filename="package://spot_micro_urdf/meshes/rear_right_shoulder_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="black">
       </material>
     </visual>
     <collision>
@@ -475,9 +468,7 @@
           filename="package://spot_micro_urdf/meshes/rear_right_thigh_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="blue">
       </material>
     </visual>
     <collision>
@@ -533,9 +524,7 @@
           filename="package://spot_micro_urdf/meshes/rear_right_calf_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="grey">
       </material>
     </visual>
     <collision>
@@ -591,9 +580,7 @@
           filename="package://spot_micro_urdf/meshes/front_right_shoulder_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="black">
       </material>
     </visual>
     <collision>
@@ -649,9 +636,7 @@
           filename="package://spot_micro_urdf/meshes/front_right_thigh_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="blue">
       </material>
     </visual>
     <collision>
@@ -707,9 +692,7 @@
           filename="package://spot_micro_urdf/meshes/front_right_calf_link.STL" />
       </geometry>
       <material
-        name="">
-        <color
-          rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        name="grey">
       </material>
     </visual>
     <collision>
