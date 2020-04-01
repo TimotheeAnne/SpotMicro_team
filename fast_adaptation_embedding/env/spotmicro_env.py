@@ -62,6 +62,8 @@ class SpotMicroEnv(gym.Env):
                  urdf_model="basic",
                  inspection=False,
                  normalized_action=True,
+                 faulty_motor=None,
+                 load=None,
                  ):
 
         self.is_render = render
@@ -118,6 +120,12 @@ class SpotMicroEnv(gym.Env):
 
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_TINY_RENDERER, 1)
 
+        self.faulty_motor = faulty_motor
+        self.load = load
+        self.floor = 'default'
+        self.wind_force = 0
+        self.friction = 0.8
+
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
         self._BuildMotorIdList()
@@ -136,7 +144,7 @@ class SpotMicroEnv(gym.Env):
         observation_high = (self.get_observation_upper_bound())
         observation_low = (self.get_observation_lower_bound())
         self.observation_space = spaces.Box(observation_low, observation_high, dtype=np.float32)
-        self.set_mismatch([0.8, 0, 0])
+        self.set_mismatch([self.friction, self.wind_force, self.faulty_motor, self.load, self.floor])
 
     def _BuildJointNameToIdDict(self):
         num_joints = self.pybullet_client.getNumJoints(self.quadruped)
@@ -154,12 +162,17 @@ class SpotMicroEnv(gym.Env):
 
         orn = self.pybullet_client.getQuaternionFromEuler([0, 0, 0])
         self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
-        self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, 0], orn)
+        self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, -0.1], orn)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
-        # urdf_model = 'urdf/spotmicroai_sphere_feet.xml' if self.urdf_model == 'sphere' else 'urdf/spotmicroai_gen.urdf.xml'
-        urdf_model = 'spot_micro_urdf/urdf/spot_micro_urdf.urdf.xml'
+        if self.faulty_motor is not None:
+            urdf_model = 'spot_micro_urdf/urdf/spot_micro_blocked_' + str(self.faulty_motor) + '_urdf.urdf.xml'
+        elif self.load is not None:
+            urdf_model = 'spot_micro_urdf/urdf/spot_micro_loaded_' + self.load_index + '_urdf.urdf.xml'
+        else:
+            urdf_model = 'spot_micro_urdf/urdf/spot_micro_urdf.urdf.xml'
+
         quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
                                                   self.init_oritentation,
                                                   useFixedBase=self.useFixeBased,
@@ -178,7 +191,15 @@ class SpotMicroEnv(gym.Env):
     def set_kp(self, kp):
         self.kp = kp
 
-    def reset(self):
+    def reset(self, hard_reset=False):
+        if hard_reset:
+            self.pybullet_client.resetSimulation()
+            self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations,
+                                                           fixedTimeStep=self.fixedTimeStep)
+
+            self.quadruped = self.loadModels()
+            self._BuildJointNameToIdDict()
+            self._BuildMotorIdList()
         if self.useFixeBased:
             init_pos = [0, 0, 0.5]
             reinit_pos = [0, 0, 0.5]
@@ -316,16 +337,30 @@ class SpotMicroEnv(gym.Env):
                                                        jointIndices=self._motor_id_list,
                                                        controlMode=self.pybullet_client.TORQUE_CONTROL,
                                                        forces=np.multiply(PD_torque, self._motor_direction))
-        wind_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
+
         if self.wind_force > 0:
+            wind_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
             self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
                                                     linkIndex=0,
                                                     forceObj=wind_force,
                                                     posObj=self.get_body_xyz(),
                                                     flags=p.WORLD_FRAME)
-            [x,y,_]  =self.get_body_xyz()
-            self.pybullet_client.resetBasePositionAndOrientation(self.arrow, [x, y+0.025, 0.3],
-                                                                 p.getQuaternionFromEuler([1.57, 0, 1.48+self.wind_angle]))
+            [x, y, _] = self.get_body_xyz()
+            self.pybullet_client.resetBasePositionAndOrientation(self.arrow, [x, y + 0.025, 0.25],
+                                                                 p.getQuaternionFromEuler(
+                                                                     [1.57, 0, 1.48 + self.wind_angle]))
+        if self.floor == "sticky":
+            for foot in ['front_left_calf_joint', 'front_right_calf_joint', 'rear_left_calf_joint', 'rear_right_calf_joint']:
+                link_data = self.pybullet_client.getLinkState(self.quadruped, self._joint_name_to_id[foot], computeLinkVelocity=1)
+
+                if link_data[0][2] < 0:
+                    # print('velocity', link_data[6])
+                    sticky_damping = [0, 0, 1]
+                    self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
+                                                            linkIndex=self._joint_name_to_id[foot],
+                                                            forceObj=sticky_damping,
+                                                            posObj=self.get_body_xyz(),
+                                                            flags=p.WORLD_FRAME)
         self.pybullet_client.stepSimulation()
 
     def _filter_velocities(self, x):
@@ -390,11 +425,18 @@ class SpotMicroEnv(gym.Env):
 
     def set_mismatch(self, mismatch):
         self.mismatch = mismatch
-        [friction, wind_angle, wind_force] = self.mismatch
+        [friction, wind_force, faulty_motor, load, floor] = self.mismatch
         assert 0 <= friction, 'friction must be non-negative'
+        assert faulty_motor is None or 0 <= faulty_motor < 12, 'faulty motor must be None or an int in [0;11]'
+        assert load in [None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"], 'load must be in [None, "rear 1kg", "rear 2kg", "front 1k", "front 2kg"]'
+        assert floor in ['default', 'sticky', 'soft'], "floor must be in ['default', 'sticky', 'soft']"
         self.lateral_friction = friction
-        self.wind_angle = wind_angle
-        self.wind_force = wind_force
+        self.wind_angle = np.pi / 2 if wind_force > 0 else -np.pi / 2
+        self.wind_force = abs(wind_force)
+        self.faulty_motor = faulty_motor
+        self.load = load
+        self.load_index = str([None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"].index(self.load))
+        self.floor = floor
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         if self.lateral_friction > 0.8:
             friction_level = "striped"
@@ -455,97 +497,6 @@ class SpotMicroEnv(gym.Env):
         motor_velocities = np.multiply(motor_velocities, self._motor_direction)
         return motor_velocities
 
-    def from_motor_to_effector_position(self, joints):
-        sin = np.sin
-        cos = np.cos
-        l0, l1, l2 = [0.1, 0.2, 0.15]
-        x0, y0, z0 = [-0.1, 0.03, 0]
-        [o0, o1, o2] = joints
-        x = x0 - l1 * sin(o1) - l2 * sin(o1 + o2)
-        y = y0 - l0 * cos(o0) + sin(o0) * (l1 * cos(o1) + l2 * cos(o1 + o2))
-        z = z0 + l0 * sin(o0) + cos(o0) * (l1 * cos(o1) + l2 * cos(o1 + o2))
-        return [x, y, z]
-
-    def from_motor_to_leg(self, motor):
-        """ leg is [abduction, swing, extension] * 4 """
-        l1 = self.shoulder_to_knee
-        l2 = self.knee_to_foot
-        leg = np.zeros(12)
-        for i in range(4):
-            e = np.sqrt(l1 ** 2 + l2 ** 2 + 2 * l1 * l2 * np.cos(motor[3 * i + 2]))  # extension
-            leg[3 * i + 2] = np.copy(e)
-            leg[3 * i + 1] = motor[3 * i + 1] + np.arccos((l1 ** 2 + e ** 2 - l2 ** 2) / (2 * l1 * e))  # swing
-            leg[3 * i] = motor[3 * i]  # abduction
-        return leg
-
-    def from_leg_to_motor(self, leg):
-        """
-        leg is [abduction, swing, extension] * 4
-        e = extension in [0.1, 0.3]
-        """
-        l1 = self.shoulder_to_knee
-        l2 = self.knee_to_foot
-        motor = np.zeros(12)
-        for i in range(4):
-            motor[3 * i] = leg[3 * i]
-            e = leg[3 * i + 2]
-            motor[3 * i + 1] = leg[3 * i + 1] - np.arccos((l1 ** 2 + e ** 2 - l2 ** 2) / (2 * l1 * e))
-            motor[3 * i + 2] = np.arccos((e ** 2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2))
-        return motor
-
-
-def trapeze(t, a, T):
-    assert 0 < a <= 1 / 4
-    t = (t % T) / T
-    if t < a:
-        return t / a
-    elif t < (1 / 2 - a):
-        return 1
-    elif t < (1 / 2 + a):
-        return -t / a + 1 / (2 * a)
-    elif t < (1 - a):
-        return -1
-    elif t < 1:
-        return (t - 1) / a
-
-
-def open_loop_controller(t):
-    T = 10
-    t = t % T
-    w = 2 * np.pi / T
-    a = 1 / 8
-
-    S_max = 0.5
-
-    S = trapeze(t, a, T / 2) * 0.5
-    L = 0
-    F = 0
-
-    FL = - 0.38976073
-    FF = 1.25297262
-    RL = - 0.821442
-    RF = 1.37963418
-    if a < t < T / 4 - a:
-        test = (t - a) / a
-    else:
-        test = 0
-
-    FLS = -S + 0.2
-    FLL = FL
-    FLF = FF
-    FRS = S + 0.2
-    FRL = FL
-    FRF = test + FF
-    RLS = -S
-    RLL = RL
-    RLF = RF
-    RRS = S
-    RRL = RL
-    RRF = RF
-
-    action = [FLS, FLL, FLF, FRS, FRL, FRF, RLS, RLL, RLF, RRS, RRL, RRF]
-    return action
-
 
 if __name__ == "__main__":
     import gym
@@ -591,14 +542,16 @@ if __name__ == "__main__":
                    urdf_model='sphere',
                    inspection=True,
                    normalized_action=1,
-                   ctrl_time_step=0.02
+                   ctrl_time_step=0.02,
+                   faulty_motor=None,
+                   load=0
                    )
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch([0., -np.pi/2, 0])
-        init_obs = env.reset()
-        time.sleep(100)
+        env.set_mismatch([0., 0, None, 1])
+        init_obs = env.reset(hard_reset=1)
+        # time.sleep(10)
 
         recorder = None
         # recorder = VideoRecorder(env, "friction_1_slower4.mp4")

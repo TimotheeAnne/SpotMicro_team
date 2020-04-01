@@ -197,7 +197,7 @@ def process_data(data):
 
 
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
-    current_state = env.reset()
+    current_state = env.reset(hard_reset=True)
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config[
                                                       'max_action_jerk'], config['max_torque_jerk']
@@ -265,7 +265,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             recorder = None
     else:
         recorder = None
-    current_state = env.reset()
+    current_state = env.reset(hard_reset=True)
     trajectory = []
     traject_cost = 0
     model_error = 0
@@ -325,8 +325,8 @@ def execute_online(env, model, config, pred_high, pred_low, K):
 
     def on_press(key):
         if key == Key.left:
-            env.set_mismatch([friction, wind_direction, wind_force])
-            env.reset()
+            env.set_mismatch([friction, wind_force, None, None, 'sticky'])
+            env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
@@ -343,8 +343,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
     IDpopsize = env.pybullet_client.addUserDebugParameter("population size (10^x)", 0, 5, 4)
     IDhorizon = env.pybullet_client.addUserDebugParameter("Horizon", 1, 50, 25)
     IDfriction = env.pybullet_client.addUserDebugParameter("Friction", 0, 0.8, 0.8)
-    IDwind_force = env.pybullet_client.addUserDebugParameter("wind force", 0, 2, 0)
-    IDwind_direction = env.pybullet_client.addUserDebugParameter("wind direction", -3.14, 3.14, 0)
+    IDwind_force = env.pybullet_client.addUserDebugParameter("wind force", -2, 2, 0)
     # Collect events until released
     listener = Listener(on_press=on_press, on_release=on_release)
     listener.start()
@@ -361,7 +360,6 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             horizon = env.pybullet_client.readUserDebugParameter(IDhorizon)
             friction = env.pybullet_client.readUserDebugParameter(IDfriction)
             wind_force = env.pybullet_client.readUserDebugParameter(IDwind_force)
-            wind_direction = env.pybullet_client.readUserDebugParameter(IDwind_direction)
             config['popsize'] = int(10 ** popsize)
             config['horizon'] = int(horizon)
             config['sol_dim'] = config['horizon'] * config['action_dim']
@@ -700,7 +698,7 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 1,  # per task
+    "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "test_iterations": 20,
@@ -733,7 +731,7 @@ config = {
     "record_video": 1,
     "video_recording_frequency": 25,
     "result_dir": "results",
-    "env_name": "spot_micro_03",
+    "env_name": "spot_micro_04",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "SpotMicro evaluate from scratch",
@@ -821,29 +819,53 @@ for (key, val) in arguments.config:
     else:
         config[key] = float(val)
 
-mismatches = np.array([
-    [0.2, 0, 0],
-    [0.8, 0, 0],
-])
-
-# test_mismatches = None
-test_mismatches = [
-    [0.2, 0, 0],
-    [0.8, 0, 0]
+mismatches = [
+    [0.8, 0, None, None, 'default'],
 ]
+
+test_mismatches = None
+# test_mismatches = [
+#     [0.2, 0, 0],
+#     [0.8, 0, 0]
+# ]
 
 config['test_mismatches'] = test_mismatches
 
 args = ["SpotMicroEnv-v0"]
 
 config_params = None
+run_mismatches = None
 
+config['exp_suffix'] = "test_mismatches"
+config_params = []
 
-# config['exp_suffix'] = "Slippery_floor"
-# config_params = []
+test_mismatches = [
+    [0.8, 1, None, None, 'default'],
+    [0.8, -2, None, None, 'default'],
+    [0.8, 0, 3, None, 'default'],
+    [0.8, 0, 4, None, 'default'],
+    [0.8, 0, 5, None, 'default'],
+    [0.8, 0, 9, None, 'default'],
+    [0.8, 0, 10, None, 'default'],
+    [0.8, 0, 11, None, 'default'],
+    [0.8, 0, None, 'rear 1kg', 'default'],
+    [0.8, 0, None, 'rear 2kg', 'default'],
+    [0.8, 0, None, 'front 1kg', 'default'],
+    [0.8, 0, None, 'front 2kg', 'default'],
+]
+
+""" Pour demain """
+# path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
+# directory = 'pretrained_default'
 #
-# for _ in range(10):
-#     config_params.append({})
+# for i in range(len(test_mismatches)):
+#     config_params.append({'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
+#                           'test_mismatches': [test_mismatches[i]]})
+
+run_mismatches = []
+for i in range(len(test_mismatches)):
+    config_params.append({'test_mismatches': [test_mismatches[i]]})
+    run_mismatches.append([test_mismatches[i]])
 
 
 def apply_config_params(conf, params):
@@ -873,8 +895,8 @@ def env_args_from_config(config):
     }
 
 
-# online = False
-online = True
+online = False
+# online = True
 
 if online:
     config["xreward"] = 1
@@ -889,7 +911,7 @@ if online:
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
-    online_mismatches = [[0.8, 0, 0]]
+    online_mismatches = [[0.8, 0, None, None, 'sticky']]
     online_test(gym_args=args, gym_kwargs=kwargs, mismatches=online_mismatches, config=config)
 else:
     n_run = 1 if config_params is None else len(config_params)
@@ -901,14 +923,17 @@ else:
     else:
         # For multi-run experiment
         exp_dir = None
+        assert run_mismatches is None or len(run_mismatches) == n_run
         for run in range(n_run):
             conf = copy.copy(config)
             conf['exp_dir'] = exp_dir
             conf = apply_config_params(conf, config_params[run])
+            print('run ', run, " on ", n_run)
             print("Params: ", config_params[run])
             check_config(conf)
             kwargs = env_args_from_config(conf)
-            main(gym_args=args, gym_kwargs=kwargs, mismatches=mismatches, config=conf)
+            current_mismatches = mismatches if run_mismatches is None else run_mismatches[run]
+            main(gym_args=args, gym_kwargs=kwargs, mismatches=current_mismatches, config=conf)
             exp_dir = conf['exp_dir']
 
             if run == 0:
