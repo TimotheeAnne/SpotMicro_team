@@ -83,7 +83,6 @@ class SpotMicroEnv(gym.Env):
         self.kd = np.array([0.1, 0.1, 0.04] * 4) if kd is None else kd
         self.maxForce = 3
         self._motor_direction = [-1, 1, 1] * 4
-        self.mismatch = [0]
         self.shoulder_to_knee = 0.2
         self.knee_to_foot = 0.1
         self.normalized_action = normalized_action
@@ -125,7 +124,14 @@ class SpotMicroEnv(gym.Env):
         self.floor = 'default'
         self.wind_force = 0
         self.friction = 0.8
+        self.mismatch = {'friction': self.friction,
+                         'wind_force': self.wind_force,
+                         'floor': self.floor,
+                         'load': self.load,
+                         'faulty_motor': self.faulty_motor}
+        self.load_index = str([None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"].index(self.load))
 
+        self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
         self._BuildMotorIdList()
@@ -144,7 +150,7 @@ class SpotMicroEnv(gym.Env):
         observation_high = (self.get_observation_upper_bound())
         observation_low = (self.get_observation_lower_bound())
         self.observation_space = spaces.Box(observation_low, observation_high, dtype=np.float32)
-        self.set_mismatch([self.friction, self.wind_force, self.faulty_motor, self.load, self.floor])
+        self.set_mismatch(self.mismatch)
 
     def _BuildJointNameToIdDict(self):
         num_joints = self.pybullet_client.getNumJoints(self.quadruped)
@@ -162,7 +168,8 @@ class SpotMicroEnv(gym.Env):
 
         orn = self.pybullet_client.getQuaternionFromEuler([0, 0, 0])
         self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
-        self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, -0.1], orn)
+        self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, 0.], orn)
+        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
@@ -424,20 +431,21 @@ class SpotMicroEnv(gym.Env):
         return reward_sum, np.copy(rewards)
 
     def set_mismatch(self, mismatch):
-        self.mismatch = mismatch
-        [friction, wind_force, faulty_motor, load, floor] = self.mismatch
-        assert 0 <= friction, 'friction must be non-negative'
-        assert faulty_motor is None or 0 <= faulty_motor < 12, 'faulty motor must be None or an int in [0;11]'
-        assert load in [None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"], 'load must be in [None, "rear 1kg", "rear 2kg", "front 1k", "front 2kg"]'
-        assert floor in ['default', 'sticky', 'soft'], "floor must be in ['default', 'sticky', 'soft']"
-        self.lateral_friction = friction
-        self.wind_angle = np.pi / 2 if wind_force > 0 else -np.pi / 2
-        self.wind_force = abs(wind_force)
-        self.faulty_motor = faulty_motor
-        self.load = load
+        """ a hard reset is required after setting_mismatch"""
+        for (key, val) in mismatch.items():
+            self.mismatch[key] = val
+        assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
+        assert self.mismatch['faulty_motor'] is None or 0 <= self.mismatch['faulty_motor'] < 12, 'faulty motor must be None or an int in [0;11]'
+        assert self.mismatch['load'] in [None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"], 'load must be in [None, "rear 1kg", "rear 2kg", "front 1k", "front 2kg"]'
+        assert self.mismatch['floor'] in ['default', 'sticky', 'soft'], "floor must be in ['default', 'sticky', 'soft']"
+        self.lateral_friction = self.mismatch['friction']
+        self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
+        self.wind_force = self.mismatch['wind_force']
+        self.faulty_motor = self.mismatch['faulty_motor']
+        self.load = self.mismatch['load']
         self.load_index = str([None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"].index(self.load))
-        self.floor = floor
-        self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+        self.floor = self.mismatch['floor']
+
         if self.lateral_friction > 0.8:
             friction_level = "striped"
         elif self.lateral_friction == 0.8:
@@ -446,8 +454,7 @@ class SpotMicroEnv(gym.Env):
             friction_level = "checker_red"
         else:
             friction_level = "checker_purple"
-        texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
-        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=texture_id)
+        self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
 
     def get_observation_upper_bound(self):
         """Get the upper bound of the observation.
@@ -544,12 +551,12 @@ if __name__ == "__main__":
                    normalized_action=1,
                    ctrl_time_step=0.02,
                    faulty_motor=None,
-                   load=0
+                   load=None
                    )
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch([0., 0, None, 1])
+        env.set_mismatch({})
         init_obs = env.reset(hard_reset=1)
         # time.sleep(10)
 
