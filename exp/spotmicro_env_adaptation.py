@@ -16,7 +16,6 @@ import time
 from datetime import datetime
 import pickle
 import os
-from os import path
 import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
@@ -197,7 +196,7 @@ def process_data(data):
 
 
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=False)
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config[
                                                       'max_action_jerk'], config['max_torque_jerk']
@@ -231,8 +230,8 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
             past = np.append(past, [np.copy(x)], axis=0)
         reward.append(r)
         rewards.append(info['rewards'])
+        observed_torques.extend(info['observed_torques'])
         desired_torques = []
-        observed_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
         current_state = next_state
         traject_cost += -r
@@ -265,7 +264,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             recorder = None
     else:
         recorder = None
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=False)
     trajectory = []
     traject_cost = 0
     model_error = 0
@@ -292,9 +291,9 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         acs.append(np.copy(a))
         reward.append(r)
         rewards.append(info['rewards'])
+        observed_torques.extend(info['observed_torques'])
         past = np.append(past, [np.copy(x)], axis=0)
         desired_torques = []
-        observed_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
         model_error += test_model(model, current_state.copy(), a.copy(), next_state - current_state)
         current_state = next_state
@@ -323,10 +322,12 @@ def execute_online(env, model, config, pred_high, pred_low, K):
                                                   config['max_action_jerk'], config['max_torque_jerk']
     lb, ub = config['lb'], config['ub']
 
+    mismatch = {}
+
     def on_press(key):
         if key == Key.left:
-            env.set_mismatch([friction, wind_force, None, None, 'sticky'])
-            env.reset(hard_reset=True)
+            env.set_mismatch(mismatch)
+            env.reset(hard_reset=False)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
@@ -364,7 +365,8 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             config['horizon'] = int(horizon)
             config['sol_dim'] = config['horizon'] * config['action_dim']
             config['hard_smoothing'] = smooth
-
+            mismatch['friction'] = friction
+            mismatch['wind_force'] = wind_force
             MPC = True
             smooth = True
             if MPC:
@@ -485,7 +487,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         config['iterations'] = 0
         print("Found pretrained model. Passing directly to testing model.")
 
-    elif path.exists(config["data_dir"] + "/trajectories.npy") and path.exists(config["data_dir"] + "/mismatches.npy"):
+    elif os.path.exists(config["data_dir"] + "/trajectories.npy") and os.path.exists(config["data_dir"] + "/mismatches.npy"):
         print("Found stored data. Setting random trials to zero.")
         data = np.load(config["data_dir"] + "/trajectories.npy")
         mismatches = np.load(config["data_dir"] + "/mismatches.npy")
@@ -820,14 +822,10 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    [0.8, 0, None, None, 'default'],
+    {},
 ]
 
 test_mismatches = None
-# test_mismatches = [
-#     [0.2, 0, 0],
-#     [0.8, 0, 0]
-# ]
 
 config['test_mismatches'] = test_mismatches
 
@@ -839,32 +837,33 @@ run_mismatches = None
 config['exp_suffix'] = "test_mismatches"
 config_params = []
 
-test_mismatches = [
-    [0.8, 1, None, None, 'default'],
-    [0.8, -2, None, None, 'default'],
-    [0.8, 0, 3, None, 'default'],
-    [0.8, 0, 4, None, 'default'],
-    [0.8, 0, 5, None, 'default'],
-    [0.8, 0, 9, None, 'default'],
-    [0.8, 0, 10, None, 'default'],
-    [0.8, 0, 11, None, 'default'],
-    [0.8, 0, None, 'rear 1kg', 'default'],
-    [0.8, 0, None, 'rear 2kg', 'default'],
-    [0.8, 0, None, 'front 1kg', 'default'],
-    [0.8, 0, None, 'front 2kg', 'default'],
-]
-
-""" Pour demain """
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
 # directory = 'pretrained_default'
-#
+
 # for i in range(len(test_mismatches)):
-#     config_params.append({'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
-#                           'test_mismatches': [test_mismatches[i]]})
+#     config_params.append({
+#         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
+#         'test_mismatches': [test_mismatches[i]]})
+
+test_mismatches = [
+    {},
+    {'friction': 0.2},
+    {'wind_force': 2},
+    {'wind_force': -1},
+    {'load_weight': 2, 'load_pos': 0.07},
+    {'load_weight': 2, 'load_pos': -0.07},
+    {'faulty_motors': [4], 'faulty_joints': [0]},
+    {'faulty_motors': [5], 'faulty_joints': [-1]},
+    {'faulty_motors': [10], 'faulty_joints': [0]},
+    {'faulty_motors': [11], 'faulty_joints': [-1]},
+]
 
 run_mismatches = []
 for i in range(len(test_mismatches)):
-    config_params.append({'test_mismatches': [test_mismatches[i]]})
+    if i == 0:
+        config_params.append({'test_mismatches': test_mismatches})
+    else:
+        config_params.append({'test_mismatches': [test_mismatches[i]]})
     run_mismatches.append([test_mismatches[i]])
 
 
@@ -911,17 +910,17 @@ if online:
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
-    online_mismatches = [[0.8, 0, None, None, 'sticky']]
+    online_mismatches = [{}]
     online_test(gym_args=args, gym_kwargs=kwargs, mismatches=online_mismatches, config=config)
 else:
-    n_run = 1 if config_params is None else len(config_params)
-    if n_run == 1:
+    if config_params is None:
         # For one-run experiment
         check_config(config)
         kwargs = env_args_from_config(config)
         main(gym_args=args, gym_kwargs=kwargs, mismatches=mismatches, config=config)
     else:
         # For multi-run experiment
+        n_run = len(config_params)
         exp_dir = None
         assert run_mismatches is None or len(run_mismatches) == n_run
         for run in range(n_run):
