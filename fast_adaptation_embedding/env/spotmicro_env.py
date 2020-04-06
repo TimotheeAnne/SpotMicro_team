@@ -24,16 +24,17 @@ gym.logger.set_level(40)
 RENDER_HEIGHT = 360
 RENDER_WIDTH = 480
 
-# MOTOR_NAMES = ["front_left_shoulder", "front_left_leg", "front_left_foot",
-#                "front_right_shoulder", "front_right_leg", "front_right_foot",
-#                "rear_left_shoulder", "rear_left_leg", "rear_left_foot",
-#                "rear_right_shoulder", "rear_right_leg", "rear_right_foot"]
-
 MOTOR_NAMES = ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
                'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
                'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
                'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
                ]
+
+blue = [0., 0.7, 1, 1]
+black = [0.1, 0.1, 0.1, 1]
+grey = [0.6, 0.6, 0.6, 1]
+
+MOTORS_COLORS = [black, blue, grey]*4
 
 
 class SpotMicroEnv(gym.Env):
@@ -62,8 +63,10 @@ class SpotMicroEnv(gym.Env):
                  urdf_model="basic",
                  inspection=False,
                  normalized_action=True,
-                 faulty_motor=None,
-                 load=None,
+                 faulty_motors=[],
+                 faulty_joints=[],
+                 load_weight=0,
+                 load_pos=0
                  ):
 
         self.is_render = render
@@ -76,7 +79,7 @@ class SpotMicroEnv(gym.Env):
         self.action_repeat = int(ctrl_time_step / self.fixedTimeStep)
         self.numSolverIterations = 200
         self.useFixeBased = on_rack
-        self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi])
+        self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi/2])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
         self.kp = np.array([10, 5, 3] * 4) if kp is None else kp
@@ -119,17 +122,19 @@ class SpotMicroEnv(gym.Env):
 
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_TINY_RENDERER, 1)
 
-        self.faulty_motor = faulty_motor
-        self.load = load
-        self.floor = 'default'
+        self.faulty_motors = faulty_motors
+        self.faulty_joints = faulty_joints
+        self.load_weight = load_weight
+        self.load_pos = load_pos
+
         self.wind_force = 0
         self.friction = 0.8
         self.mismatch = {'friction': self.friction,
                          'wind_force': self.wind_force,
-                         'floor': self.floor,
-                         'load': self.load,
-                         'faulty_motor': self.faulty_motor}
-        self.load_index = str([None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"].index(self.load))
+                         'load_weight': self.load_weight,
+                         'load_pos': self.load_pos,
+                         'faulty_motors': self.faulty_motors,
+                         'faulty_joints': self.faulty_joints}
 
         self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
         self.quadruped = self.loadModels()
@@ -173,12 +178,8 @@ class SpotMicroEnv(gym.Env):
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
-        if self.faulty_motor is not None:
-            urdf_model = 'spot_micro_urdf/urdf/spot_micro_blocked_' + str(self.faulty_motor) + '_urdf.urdf.xml'
-        elif self.load is not None:
-            urdf_model = 'spot_micro_urdf/urdf/spot_micro_loaded_' + self.load_index + '_urdf.urdf.xml'
-        else:
-            urdf_model = 'spot_micro_urdf/urdf/spot_micro_urdf.urdf.xml'
+
+        urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
 
         quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
                                                   self.init_oritentation,
@@ -186,7 +187,10 @@ class SpotMicroEnv(gym.Env):
                                                   useMaximalCoordinates=False,
                                                   flags=flags)
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
-        self.arrow = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/arrow.urdf.xml",
+        self.wind_arrow = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/arrow.urdf.xml",
+                                                   [0, 0, -2],
+                                                   p.getQuaternionFromEuler((0, 0, 0)))
+        self.load_visual = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/load.urdf.xml",
                                                    [0, 0, -2],
                                                    p.getQuaternionFromEuler((0, 0, 0)))
 
@@ -221,7 +225,7 @@ class SpotMicroEnv(gym.Env):
                 self.quadruped,
                 self._motor_id_list,
                 self.pybullet_client.POSITION_CONTROL,
-                targetPositions=np.multiply(self.init_joint, self._motor_direction),
+                targetPositions=np.multiply(self.apply_faulty_motors(self.init_joint), self._motor_direction),
                 forces=np.ones(12) * 1000
             )
             # time.sleep(self.fixedTimeStep*20)
@@ -230,7 +234,7 @@ class SpotMicroEnv(gym.Env):
             self.quadruped,
             self._motor_id_list,
             p.POSITION_CONTROL,
-            targetPositions=np.multiply(self.init_joint, self._motor_direction),
+            targetPositions=np.multiply(self.apply_faulty_motors(self.init_joint), self._motor_direction),
             forces=np.zeros(12)
         )
 
@@ -256,7 +260,7 @@ class SpotMicroEnv(gym.Env):
                 cameraTargetPosition=base_pos,
                 distance=-0.4,
                 yaw=0,
-                pitch=-90,
+                pitch=-80,
                 roll=0,
                 upAxisIndex=1)
         else:
@@ -313,8 +317,10 @@ class SpotMicroEnv(gym.Env):
             """ abduction - swing - extension"""
             a = self.from_leg_to_motor(a)
 
+        observed_torques = []
         for _ in range(self.action_repeat):
-            self.apply_action(a)
+            obs_torque = self.apply_action(a)
+            observed_torques.append(obs_torque)
 
         """ for smoothness rewards """
         self._past_actions[:-1] = self._past_actions[1:]
@@ -322,7 +328,7 @@ class SpotMicroEnv(gym.Env):
 
         obs = self.get_obs()
         reward, rewards = self.get_reward()
-        info = {'rewards': rewards}
+        info = {'rewards': rewards, 'observed_torques': observed_torques}
         done = self.fallen()
         return np.array(obs), reward, done, info
 
@@ -334,7 +340,14 @@ class SpotMicroEnv(gym.Env):
         (xr, yr, _) = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
         return abs(xr) > math.pi / 4 or abs(yr) > math.pi / 4
 
+    def apply_faulty_motors(self, action):
+        faulty_action = np.copy(action)
+        for index in range(len(self.faulty_motors)):
+            faulty_action[self.faulty_motors[index]] = self.faulty_joints[index]
+        return faulty_action
+
     def apply_action(self, action):
+        action = self.apply_faulty_motors(action)
         self.t = self.t + self.fixedTimeStep
         q = self.GetMotorAngles()
         q_vel = self.GetMotorVelocities()
@@ -346,29 +359,34 @@ class SpotMicroEnv(gym.Env):
                                                        forces=np.multiply(PD_torque, self._motor_direction))
 
         if self.wind_force > 0:
-            wind_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
+            external_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
+
             self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
                                                     linkIndex=0,
-                                                    forceObj=wind_force,
+                                                    forceObj=external_force,
                                                     posObj=self.get_body_xyz(),
                                                     flags=p.WORLD_FRAME)
             [x, y, _] = self.get_body_xyz()
-            self.pybullet_client.resetBasePositionAndOrientation(self.arrow, [x, y + 0.025, 0.25],
+            self.pybullet_client.resetBasePositionAndOrientation(self.wind_arrow, [x, y + 0.025, 0.25],
                                                                  p.getQuaternionFromEuler(
                                                                      [1.57, 0, 1.48 + self.wind_angle]))
-        if self.floor == "sticky":
-            for foot in ['front_left_calf_joint', 'front_right_calf_joint', 'rear_left_calf_joint', 'rear_right_calf_joint']:
-                link_data = self.pybullet_client.getLinkState(self.quadruped, self._joint_name_to_id[foot], computeLinkVelocity=1)
 
-                if link_data[0][2] < 0:
-                    # print('velocity', link_data[6])
-                    sticky_damping = [0, 0, 1]
-                    self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
-                                                            linkIndex=self._joint_name_to_id[foot],
-                                                            forceObj=sticky_damping,
-                                                            posObj=self.get_body_xyz(),
-                                                            flags=p.WORLD_FRAME)
+        if self.load_weight > 0:
+            external_force = [0, 0, -9.81*self.load_weight]
+            [x_b, y_b, z_b], body_orient = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+            x = x_b + self.load_pos
+            y = y_b
+            z = z_b
+            self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
+                                                    linkIndex=0,
+                                                    forceObj=external_force,
+                                                    posObj=[x, y, z],
+                                                    flags=p.WORLD_FRAME)
+
+            self.pybullet_client.resetBasePositionAndOrientation(self.load_visual, [x, y, z + 0.07], [0, 0, 0, 1])
+
         self.pybullet_client.stepSimulation()
+        return np.copy(PD_torque)
 
     def _filter_velocities(self, x):
         y = self.A * (x + self._past_velocity[0]) + (1 - self.C) * self.A * self._past_velocity[1]
@@ -382,8 +400,8 @@ class SpotMicroEnv(gym.Env):
     def get_body_rpy(self):
         _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
         bodyOrn = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
-        yaw = bodyOrn[2] + np.pi
-        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw <= np.pi else yaw - 2 * np.pi]
+        yaw = bodyOrn[2]-np.pi/2
+        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw >= -np.pi else yaw + 2 * np.pi]
         return bodyOrn
 
     def get_linear_velocity(self):
@@ -435,16 +453,25 @@ class SpotMicroEnv(gym.Env):
         for (key, val) in mismatch.items():
             self.mismatch[key] = val
         assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
-        assert self.mismatch['faulty_motor'] is None or 0 <= self.mismatch['faulty_motor'] < 12, 'faulty motor must be None or an int in [0;11]'
-        assert self.mismatch['load'] in [None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"], 'load must be in [None, "rear 1kg", "rear 2kg", "front 1k", "front 2kg"]'
-        assert self.mismatch['floor'] in ['default', 'sticky', 'soft'], "floor must be in ['default', 'sticky', 'soft']"
+        for x in self.mismatch['faulty_motors']:
+            assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
+        assert len(self.mismatch['faulty_motors']) == len(self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
+        assert 0 <= self.mismatch['load_weight'], 'load weight must be >= 0'
+        assert -0.07 <= self.mismatch['load_pos'] <= 0.07, 'load pos must be in [-0.07,0.07]'
+
         self.lateral_friction = self.mismatch['friction']
         self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
         self.wind_force = self.mismatch['wind_force']
-        self.faulty_motor = self.mismatch['faulty_motor']
-        self.load = self.mismatch['load']
-        self.load_index = str([None, "rear 1kg", "rear 2kg", "front 1kg", "front 2kg"].index(self.load))
-        self.floor = self.mismatch['floor']
+        self.faulty_motors = self.mismatch['faulty_motors']
+        self.faulty_joints = self.mismatch['faulty_joints']
+        self.load_weight = self.mismatch['load_weight']
+        self.load_pos = self.mismatch['load_pos']
+
+        for motor in range(12):
+            if motor in self.faulty_motors:
+                self.pybullet_client.changeVisualShape(self.quadruped, motor, rgbaColor=[1, 0, 0, 1])
+            else:
+                self.pybullet_client.changeVisualShape(self.quadruped, motor, rgbaColor=MOTORS_COLORS[motor])
 
         if self.lateral_friction > 0.8:
             friction_level = "striped"
@@ -550,18 +577,20 @@ if __name__ == "__main__":
                    inspection=True,
                    normalized_action=1,
                    ctrl_time_step=0.02,
-                   faulty_motor=None,
-                   load=None
+                   faulty_motors=[],
+                   faulty_joints=[],
+                   load_weight=0,
+                   load_pos=0,
                    )
 
     O, A = [], []
     for iter in tqdm(range(1)):
         env.set_mismatch({})
-        init_obs = env.reset(hard_reset=1)
-        # time.sleep(10)
+        init_obs = env.reset(hard_reset=0)
+        # time.sleep(100)
 
         recorder = None
-        # recorder = VideoRecorder(env, "friction_1_slower4.mp4")
+        # recorder = VideoRecorder(env, "test.mp4")
 
         ub = 1
         lb = -1
@@ -624,7 +653,7 @@ if __name__ == "__main__":
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
-            if render:
+            if render and recorder is None:
                 time.sleep(0.02)
         O.append(np.copy(Obs))
         A.append(np.copy(Acs))
