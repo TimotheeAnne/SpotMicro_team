@@ -833,9 +833,9 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 run_mismatches = None
-#
-# config['exp_suffix'] = "test_mismatches"
-# config_params = []
+
+config['exp_suffix'] = "test_mismatches"
+config_params = []
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
 # directory = '07_04_pretrained'
