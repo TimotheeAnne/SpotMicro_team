@@ -196,7 +196,7 @@ def process_data(data):
 
 
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
-    current_state = env.reset(hard_reset=False)
+    current_state = env.reset(hard_reset=True)
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config[
                                                       'max_action_jerk'], config['max_torque_jerk']
@@ -264,7 +264,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             recorder = None
     else:
         recorder = None
-    current_state = env.reset(hard_reset=False)
+    current_state = env.reset(hard_reset=True)
     trajectory = []
     traject_cost = 0
     model_error = 0
@@ -327,7 +327,7 @@ def execute_online(env, model, config, pred_high, pred_low, K):
     def on_press(key):
         if key == Key.left:
             env.set_mismatch(mismatch)
-            env.reset(hard_reset=False)
+            env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
@@ -478,7 +478,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     best_reward, best_distance = -np.inf, -np.inf
     '''-------------Attempt to load saved data------------------'''
     if config['pretrained_model'] is not None:
-        mismatches = np.load(config['pretrained_model'] + "/mismatches.npy")
+        mismatches = np.load(config['pretrained_model'] + "/mismatches.npy", allow_pickle=True)
         n_task = len(mismatches)
         models = n_task * [None]
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
@@ -833,13 +833,13 @@ args = ["SpotMicroEnv-v0"]
 
 config_params = None
 run_mismatches = None
-
-config['exp_suffix'] = "test_mismatches"
-config_params = []
+#
+# config['exp_suffix'] = "test_mismatches"
+# config_params = []
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
-# directory = 'pretrained_default'
-
+# directory = '07_04_pretrained'
+#
 # for i in range(len(test_mismatches)):
 #     config_params.append({
 #         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
@@ -850,12 +850,12 @@ test_mismatches = [
     {'friction': 0.2},
     {'wind_force': 2},
     {'wind_force': -1},
-    {'load_weight': 2, 'load_pos': 0.07},
-    {'load_weight': 2, 'load_pos': -0.07},
     {'faulty_motors': [4], 'faulty_joints': [0]},
     {'faulty_motors': [5], 'faulty_joints': [-1]},
     {'faulty_motors': [10], 'faulty_joints': [0]},
     {'faulty_motors': [11], 'faulty_joints': [-1]},
+    {'load_weight': 2, 'load_pos': 0.07},
+    {'load_weight': 2, 'load_pos': -0.07},
 ]
 
 run_mismatches = []

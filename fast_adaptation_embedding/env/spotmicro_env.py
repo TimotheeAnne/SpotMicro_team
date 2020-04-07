@@ -136,7 +136,6 @@ class SpotMicroEnv(gym.Env):
                          'load_pos': self.load_pos,
                          'faulty_motors': self.faulty_motors,
                          'faulty_joints': self.faulty_joints}
-
         self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
@@ -215,6 +214,7 @@ class SpotMicroEnv(gym.Env):
             self.quadruped = self.loadModels()
             self._BuildJointNameToIdDict()
             self._BuildMotorIdList()
+            self.apply_mismatch()
         if self.useFixeBased:
             init_pos = [0, 0, 0.5]
             reinit_pos = [0, 0, 0.5]
@@ -259,23 +259,23 @@ class SpotMicroEnv(gym.Env):
         base_pos = bodyPos
 
         if self.inspection:
-            base_pos = base_pos[0], base_pos[1], base_pos[2] - 0.1,
+            base_pos = base_pos[0]+0.1, base_pos[1]-0.1, base_pos[2],
             view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
                 cameraTargetPosition=base_pos,
                 distance=-0.4,
-                yaw=0,
-                pitch=-80,
+                yaw=225,
+                pitch=15,
                 roll=0,
-                upAxisIndex=1)
+                upAxisIndex=2)
         else:
+            base_pos = base_pos[0] + 0.1, base_pos[1] - 0.1, base_pos[2],
             view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
                 cameraTargetPosition=base_pos,
-                distance=-0.5,
-                yaw=0,
-                pitch=-80,
+                distance=-0.4,
+                yaw=225,
+                pitch=15,
                 roll=0,
-                upAxisIndex=1)
-
+                upAxisIndex=2)
         proj_matrix = self.pybullet_client.computeProjectionMatrixFOV(fov=60,
                                                                       aspect=float(RENDER_WIDTH) / RENDER_HEIGHT,
                                                                       nearVal=0.1,
@@ -454,6 +454,12 @@ class SpotMicroEnv(gym.Env):
 
     def set_mismatch(self, mismatch):
         """ a hard reset is required after setting_mismatch"""
+        self.mismatch = {'friction': 0.8,
+                         'wind_force': 0,
+                         'load_weight': 0,
+                         'load_pos': 0,
+                         'faulty_motors': [],
+                         'faulty_joints': []}
         for (key, val) in mismatch.items():
             self.mismatch[key] = val
         assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
@@ -472,6 +478,9 @@ class SpotMicroEnv(gym.Env):
         self.load_weight = self.mismatch['load_weight']
         self.load_pos = self.mismatch['load_pos']
 
+        self.apply_mismatch()
+
+    def apply_mismatch(self):
         for motor in range(12):
             if motor in self.faulty_motors:
                 self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
@@ -594,12 +603,13 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'load_weight': 0.7, 'load_pos': -0.07})
+        env.set_mismatch({'faulty_motors': [4], 'faulty_joints': [0]})
+        # env.set_mismatch({'wind_force': 1})
         init_obs = env.reset(hard_reset=1)
-        # time.sleep(100)
+        # time.sleep(10)
 
-        recorder = None
-        # recorder = VideoRecorder(env, "test.mp4")
+        # recorder = None
+        recorder = VideoRecorder(env, "test.mp4")
 
         ub = 1
         lb = -1
