@@ -15,6 +15,7 @@ import math
 import numpy as np
 import gym
 from gym import spaces
+
 from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 # from pynput.keyboard import Key, Listener
@@ -34,7 +35,7 @@ blue = [0., 0.7, 1, 1]
 black = [0.1, 0.1, 0.1, 1]
 grey = [0.6, 0.6, 0.6, 1]
 
-MOTORS_COLORS = [black, blue, grey]*4
+MOTORS_COLORS = [black, blue, grey] * 4
 
 
 class SpotMicroEnv(gym.Env):
@@ -79,7 +80,7 @@ class SpotMicroEnv(gym.Env):
         self.action_repeat = int(ctrl_time_step / self.fixedTimeStep)
         self.numSolverIterations = 200
         self.useFixeBased = on_rack
-        self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi/2])
+        self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, np.pi / 2])
         self.reinit_position = [0, 0, 0.3]
         self.init_position = [0, 0, 0.23]
         self.kp = np.array([10, 5, 3] * 4) if kp is None else kp
@@ -179,7 +180,10 @@ class SpotMicroEnv(gym.Env):
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
 
-        urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
+        if (self.load_pos, self.load_weight) in [(0.07, 1), (0.07, 2), (-0.07, 1), (-0.07, 2)]:
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_front_1kg.urdf.xml'
+        else:
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
 
         quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
                                                   self.init_oritentation,
@@ -188,11 +192,11 @@ class SpotMicroEnv(gym.Env):
                                                   flags=flags)
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
         self.wind_arrow = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/arrow.urdf.xml",
-                                                   [0, 0, -2],
-                                                   p.getQuaternionFromEuler((0, 0, 0)))
+                                                        [0, 0, -2],
+                                                        p.getQuaternionFromEuler((0, 0, 0)))
         self.load_visual = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/load.urdf.xml",
-                                                   [0, 0, -2],
-                                                   p.getQuaternionFromEuler((0, 0, 0)))
+                                                         [0, 0, -2],
+                                                         p.getQuaternionFromEuler((0, 0, 0)))
 
         return quadruped
 
@@ -358,7 +362,7 @@ class SpotMicroEnv(gym.Env):
                                                        controlMode=self.pybullet_client.TORQUE_CONTROL,
                                                        forces=np.multiply(PD_torque, self._motor_direction))
 
-        if self.wind_force > 0:
+        if self.wind_force != 0:
             external_force = [self.wind_force * np.cos(self.wind_angle), self.wind_force * np.sin(self.wind_angle), 0]
 
             self.pybullet_client.applyExternalForce(objectUniqueId=self.quadruped,
@@ -371,8 +375,8 @@ class SpotMicroEnv(gym.Env):
                                                                  p.getQuaternionFromEuler(
                                                                      [1.57, 0, 1.48 + self.wind_angle]))
 
-        if self.load_weight > 0:
-            external_force = [0, 0, -9.81*self.load_weight]
+        if (self.load_pos, self.load_weight) not in [(0, 0), (0.07, 1), (0.07, 2), (-0.07, 1), (-0.07, 2)]:
+            external_force = [0, 0, -9.81 * self.load_weight]
             [x_b, y_b, z_b], body_orient = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
             x = x_b + self.load_pos
             y = y_b
@@ -400,7 +404,7 @@ class SpotMicroEnv(gym.Env):
     def get_body_rpy(self):
         _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
         bodyOrn = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
-        yaw = bodyOrn[2]-np.pi/2
+        yaw = bodyOrn[2] - np.pi / 2
         bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw >= -np.pi else yaw + 2 * np.pi]
         return bodyOrn
 
@@ -455,13 +459,14 @@ class SpotMicroEnv(gym.Env):
         assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
         for x in self.mismatch['faulty_motors']:
             assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
-        assert len(self.mismatch['faulty_motors']) == len(self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
+        assert len(self.mismatch['faulty_motors']) == len(
+            self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
         assert 0 <= self.mismatch['load_weight'], 'load weight must be >= 0'
         assert -0.07 <= self.mismatch['load_pos'] <= 0.07, 'load pos must be in [-0.07,0.07]'
 
         self.lateral_friction = self.mismatch['friction']
         self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
-        self.wind_force = self.mismatch['wind_force']
+        self.wind_force = np.abs(self.mismatch['wind_force'])
         self.faulty_motors = self.mismatch['faulty_motors']
         self.faulty_joints = self.mismatch['faulty_joints']
         self.load_weight = self.mismatch['load_weight']
@@ -469,9 +474,11 @@ class SpotMicroEnv(gym.Env):
 
         for motor in range(12):
             if motor in self.faulty_motors:
-                self.pybullet_client.changeVisualShape(self.quadruped, motor, rgbaColor=[1, 0, 0, 1])
+                self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+                                                       rgbaColor=[1, 0, 0, 1])
             else:
-                self.pybullet_client.changeVisualShape(self.quadruped, motor, rgbaColor=MOTORS_COLORS[motor])
+                self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+                                                       rgbaColor=MOTORS_COLORS[motor])
 
         if self.lateral_friction > 0.8:
             friction_level = "striped"
@@ -482,6 +489,8 @@ class SpotMicroEnv(gym.Env):
         else:
             friction_level = "checker_purple"
         self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
+        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
+        self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
     def get_observation_upper_bound(self):
         """Get the upper bound of the observation.
@@ -585,8 +594,8 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({})
-        init_obs = env.reset(hard_reset=0)
+        env.set_mismatch({'load_weight': 0.7, 'load_pos': -0.07})
+        init_obs = env.reset(hard_reset=1)
         # time.sleep(100)
 
         recorder = None
