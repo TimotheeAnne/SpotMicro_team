@@ -1,5 +1,5 @@
 import torch
-import numpy as np 
+import numpy as np
 import copy
 import gym
 from datetime import datetime
@@ -10,12 +10,14 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import argparse
 from tqdm import trange
 import os, inspect
+
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 os.sys.path.insert(0, parentdir)
 import fast_adaptation_embedding.env
 import fast_adaptation_embedding.models.embedding_nn_normalized_v2 as nn_model
 from fast_adaptation_embedding.controllers.random_shooting import RS_opt
+
 
 class Cost(object):
     def __init__(self, model, init_state, horizon, action_dim, goal, pred_high, pred_low, config, last_action,
@@ -71,7 +73,9 @@ class Cost(object):
                                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] + max_acc,
                                  out=None)
                 amax = torch.min(amax,
-                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:, ( t - 3) * ad:(t - 2) * ad] + max_jerk,
+                                 3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:,
+                                                                                                       (t - 3) * ad:(
+                                                                                                                            t - 2) * ad] + max_jerk,
                                  out=None)
                 amin = torch.max(a[:, (t - 1) * ad:t * ad] - max_vel,
                                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] - max_acc,
@@ -155,37 +159,37 @@ class Cost(object):
 
 
 def train_meta(tasks_in, tasks_out, config):
-    model = nn_model.Embedding_NN(dim_in=config["dim_in"], 
-                                hidden=config["hidden_layers"], 
-                                dim_out=config["dim_out"], 
-                                embedding_dim=config["embedding_size"], 
-                                num_tasks=len(tasks_in), 
-                                CUDA=config["cuda"], 
-                                SEED=None, 
-                                output_limit=config["output_limit"], 
-                                dropout=0.0,
-                                hidden_activation=config["hidden_activation"])
-    task_losses = nn_model.train_meta(model, 
-                        tasks_in, 
-                        tasks_out, 
-                        meta_iter=config["meta_iter"], 
-                        inner_iter=config["inner_iter"], 
-                        inner_step=config["inner_step"], 
-                        meta_step=config["meta_step"], 
-                        minibatch=config["meta_batch_size"],
-                        inner_sample_size=config["inner_sample_size"])
+    model = nn_model.Embedding_NN(dim_in=config["dim_in"],
+                                  hidden=config["hidden_layers"],
+                                  dim_out=config["dim_out"],
+                                  embedding_dim=config["embedding_size"],
+                                  num_tasks=len(tasks_in),
+                                  CUDA=config["cuda"],
+                                  SEED=None,
+                                  output_limit=config["output_limit"],
+                                  dropout=0.0,
+                                  hidden_activation=config["hidden_activation"])
+    task_losses = nn_model.train_meta(model,
+                                      tasks_in,
+                                      tasks_out,
+                                      meta_iter=config["meta_iter"],
+                                      inner_iter=config["inner_iter"],
+                                      inner_step=config["inner_step"],
+                                      meta_step=config["meta_step"],
+                                      minibatch=config["meta_batch_size"],
+                                      inner_sample_size=config["inner_sample_size"])
     return model, task_losses
 
 
 def train_model(model, train_in, train_out, task_id, config):
     cloned_model = copy.deepcopy(model)
-    nn_model.train(cloned_model, 
-                train_in, 
-                train_out, 
-                task_id=task_id, 
-                inner_iter=config["epoch"], 
-                inner_lr=config["learning_rate"], 
-                minibatch=config["minibatch_size"])
+    nn_model.train(cloned_model,
+                   train_in,
+                   train_out,
+                   task_id=task_id,
+                   inner_iter=config["epoch"],
+                   inner_lr=config["learning_rate"],
+                   minibatch=config["minibatch_size"])
     return cloned_model
 
 
@@ -202,8 +206,9 @@ def process_data(data):
 
 
 def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, pred_high, task_likelihoods,
-            pred_low, K, index_iter, final_iter, samples, env_index=0, n_task=1, n_model=1, model_index=0, test=False,):
-    index_iter = index_iter // (n_task*n_model)
+            pred_low, K, index_iter, final_iter, samples, env_index=0, n_task=1, n_model=1, model_index=0,
+            test=False, ):
+    index_iter = index_iter // (n_task * n_model)
     if config['record_video']:
         if (index_iter % config['video_recording_frequency'] == 0) or (index_iter == final_iter - 1):
             recorder = VideoRecorder(env, config['logdir'] + "/videos/env_" + str(env_index) + "_run_" + str(
@@ -257,6 +262,39 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     return trajectory, traject_cost
 
 
+def execute_online(env, steps, model, config, task_likelihoods, pred_low, pred_high, K, samples,
+                   current_state, recorder, trajectory, traject_cost, past):
+    for t in range(steps):
+        virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
+        cost_object = Cost(model=model, init_state=current_state, horizon=config["horizon"],
+                           action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
+                           pred_low=pred_low, config=config, last_action=virtual_acs, speed=None,
+                           task_likelihoods=task_likelihoods)
+
+        config["cost_fn"] = cost_object.cost_fn
+        optimizer = RS_opt(config)
+        sol = optimizer.obtain_solution(acs=virtual_acs)
+        x = sol[0:env.action_space.shape[0]]
+        a = np.copy(x)
+        next_state, r = 0, 0
+        for k in range(K):
+            next_state, rew, done, info = env.step(a)
+            r += rew
+            if recorder is not None:
+                recorder.capture_frame()
+        trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
+        current_state = next_state
+        traject_cost += -r
+        past = np.append(past, [np.copy(x)], axis=0)
+        samples['acs'].append(np.copy(a))
+        samples['obs'].append(np.copy(next_state))
+        samples['reward'].append(r)
+        samples['rewards'].append(info['rewards'])
+        if done:
+            break
+    return traject_cost, done, past
+
+
 def extract_action_seq(data):
     actions = []
     for d in data:
@@ -272,10 +310,10 @@ def compute_likelihood(data, models, beta=1.0):
     if data_size is None: data_size = len(data)
     lik = np.zeros(len(models))
     x, y, _, _ = process_data(data[-data_size::])
-    for i,m in enumerate(models):
+    for i, m in enumerate(models):
         y_pred = m.predict(x)
-        lik[i] = np.exp(- beta * m.loss_function_numpy(y, y_pred)/len(x))
-    return lik/np.sum(lik) 
+        lik[i] = np.exp(- beta * m.loss_function_numpy(y, y_pred) / len(x))
+    return lik / np.sum(lik)
 
 
 def sample_model_index(likelihoods):
@@ -296,20 +334,20 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         try:
             i = 0
             while True:
-                res_dir = os.path.join(config['exp_dir'], "run_"+str(i))
+                res_dir = os.path.join(config['exp_dir'], "run_" + str(i))
                 i += 1
                 if not os.path.isdir(res_dir):
                     os.makedirs(res_dir)
-                    os.makedirs(res_dir+"/videos")
+                    os.makedirs(res_dir + "/videos")
                     config['logdir'] = res_dir
                     break
         except:
             print("Could not make the result directory!!!")
     else:
         res_dir = config['logdir']
-        os.makedirs(res_dir+"/videos")
+        os.makedirs(res_dir + "/videos")
 
-    with open(res_dir + "/details.txt","w+") as f:
+    with open(res_dir + "/details.txt", "w+") as f:
         f.write(config["exp_details"])
 
     with open(res_dir + '/config.json', 'w') as fp:
@@ -318,6 +356,11 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
     '''---------Prepare the test environment---------------'''
     env = gym.make(*gym_args, **gym_kwargs)
+    list_data_dir = os.listdir(config["data_dir"])
+    n_training_tasks = 0
+    for name in list_data_dir:
+        if "run" in name:
+            n_training_tasks += 1
     try:
         s = os.environ['DISPLAY']
         print("Display available")
@@ -327,46 +370,44 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     except:
         print("Display not available")
         env.reset()
-    
+
     print("\n\n\n")
     '''---------Initialize global variables------------------'''
     data = []
     all_action_seq = []
     all_costs = []
-    with open(res_dir + "/costs_"+str(index)+".txt", "w+") as f:
+    with open(res_dir + "/costs_" + str(index) + ".txt", "w+") as f:
         f.write("mismatches" + str(test_mismatch) + "\n")
 
     '''--------------------Meta learn the models---------------------------'''
-    if not path.exists(config["data_dir"] + "/" + config["model_name"]+".pt"):
+    if not path.exists(config["data_dir"] + "/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
-        list_data_dir = os.listdir(config["data_dir"])
-        n_training_tasks = len(list_data_dir)-1 if 'config.txt' in list_data_dir else len(list_data_dir)
         tasks_in, tasks_out = [], []
         for n in range(n_training_tasks):
-            meta_data = np.load(config["data_dir"] + "run_"+str(n)+"/trajectories.npy", allow_pickle=True)
-            x, y, high, low = process_data(meta_data)
+            meta_data = np.load(config["data_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
+            x, y, high, low = process_data(meta_data[0])
             tasks_in.append(x)
             tasks_out.append(y)
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
         meta_model, task_losses = train_meta(tasks_in, tasks_out, config)
-        meta_model.save(config["data_dir"] + "/" + config["model_name"]+".pt")
-        np.save(config["data_dir"] + "/"+config["model_name"]+"_task_losses.npy", task_losses)
+        meta_model.save(config["data_dir"] + "/" + config["model_name"] + ".pt")
+        np.save(config["data_dir"] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
     else:
         print("Model found. Loading from '.pt' file...")
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-        meta_model = nn_model.load_model(config["data_dir"] + "/"+ config["model_name"]+".pt", device)
+        meta_model = nn_model.load_model(config["data_dir"] + "/" + config["model_name"] + ".pt", device)
 
     raw_models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
     models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
-    for task_id,m in enumerate(raw_models):
+    for task_id, m in enumerate(raw_models):
         m.fix_task(task_id)
 
-    for task_id,m in enumerate(models):
+    for task_id, m in enumerate(models):
         m.fix_task(task_id)
 
     '''------------------------Test time------------------------------------'''
-    high, low = np.ones(config["dim_out"])*1000.,  -np.ones(config["dim_out"])*1000.
-    task_likelihoods = np.random.rand(n_training_tasks)
+    high, low = np.ones(config["dim_out"]) * 1000., -np.ones(config["dim_out"]) * 1000.
+
     traj_obs, traj_acs, traj_reward, traj_rewards = [], [], [], []
     best_reward, best_distance = -np.inf, 0
     tbar = trange(config["iterations"], desc='', leave=True)
@@ -377,59 +418,127 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
 
     for index_iter in tbar:
-        new_mismatch = test_mismatch
-        env.set_mismatch(new_mismatch)
         samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': []}
-        trajectory, c = execute(env=env, 
-                                init_state=config["init_state"], 
-                                model=models, 
-                                steps=config["episode_length"],
-                                init_mean=np.zeros(config["sol_dim"]) , 
-                                init_var=0.01 * np.ones(config["sol_dim"]), 
-                                config=config,
-                                last_action_seq=None,
-                                task_likelihoods=task_likelihoods,
-                                pred_high=high,
-                                pred_low=low,
-                                K=config['K'],
-                                index_iter=index_iter,
-                                final_iter=config["iterations"],
-                                samples=samples
-                                )
-        
-        data += trajectory
-        '''-----------------Compute likelihood before relearning the models-------'''
-        task_likelihoods = compute_likelihood(data, raw_models)
+        task_likelihoods = np.random.rand(n_training_tasks)
 
-        if (len(samples['reward'][0])) == config['episode_length']:
-            best_reward = max(best_reward, np.sum(samples["reward"]))
-        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3])*0.02)
-        tbar.set_description(("Reward " + str(int(best_reward*100)/100) if best_reward != -np.inf else str(-np.inf)) +
-                             " Distance " + str(int(100*best_distance)/100) +
-                             " likelihoods: " + str(task_likelihoods))
+        if config['online']:
+            if (index_iter+1) % config['video_recording_frequency'] == 0 or index_iter == config["iterations"] - 1:
+                recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(index_iter) + ".mp4")
+            else:
+                recorder = None
+            c = 0
+            init_mismatch = test_mismatch[1][0]
+            env.set_mismatch(init_mismatch)
+            current_state = env.reset(hard_reset=True)
+            past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
+            n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
+            for adapt_steps in range(n_adapt_steps):
+                steps = adapt_steps * config['successive_steps']
+                if steps in test_mismatch[0]:
+                    mismatch_index = test_mismatch[0].index(steps)
+                    env.set_mismatch(test_mismatch[1][mismatch_index])
+                trajectory = []
+                c, done, past = execute_online(env=env,
+                                               steps=config['successive_steps'],
+                                               model=models,
+                                               config=config,
+                                               task_likelihoods=task_likelihoods,
+                                               samples=samples,
+                                               current_state=current_state,
+                                               recorder=recorder,
+                                               pred_high=high,
+                                               pred_low=low,
+                                               K=config['K'],
+                                               trajectory=trajectory,
+                                               traject_cost=c,
+                                               past=past
+                                               )
+                if done:
+                    break
+                data += trajectory
+                '''-----------------Compute likelihood before relearning the models-------'''
+                task_likelihoods = compute_likelihood(data, raw_models)
 
-        x, y, high, low = process_data(data)
-        
-        task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
+                x, y, high, low = process_data(data)
+                task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
 
-        task_likelihoods = task_likelihoods * 0
-        task_likelihoods[task_index] = 1.0
-        data_size = config['adapt_steps']
-        if data_size is None:
-            data_size = len(x)
+                task_likelihoods = task_likelihoods * 0
+                task_likelihoods[task_index] = 1.0
+                data_size = config['adapt_steps']
+                if data_size is None:
+                    data_size = len(x)
 
-        models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::], train_out=y[-data_size::], task_id=task_index, config=config)
+                models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
+                                                 train_out=y[-data_size::], task_id=task_index, config=config)
 
+            if recorder is not None:
+                recorder.close()
+
+            if (len(samples['reward'])) == config['episode_length']:
+                best_reward = max(best_reward, np.sum(samples["reward"]))
+            best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, -3]) * 0.02)
+            tbar.set_description(
+                ("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(-np.inf)) +
+                " Distance " + str(int(100 * best_distance) / 100))
+            tbar.refresh()
+
+            traj_obs.append(samples["obs"])
+            traj_acs.append(samples["acs"])
+            traj_reward.append(samples["reward"])
+            traj_rewards.append(samples["rewards"])
+        else:
+            new_mismatch = test_mismatch
+            env.set_mismatch(new_mismatch)
+            trajectory, c = execute(env=env,
+                                    init_state=config["init_state"],
+                                    model=models,
+                                    steps=config["episode_length"],
+                                    init_mean=np.zeros(config["sol_dim"]),
+                                    init_var=0.01 * np.ones(config["sol_dim"]),
+                                    config=config,
+                                    last_action_seq=None,
+                                    task_likelihoods=task_likelihoods,
+                                    pred_high=high,
+                                    pred_low=low,
+                                    K=config['K'],
+                                    index_iter=index_iter,
+                                    final_iter=config["iterations"],
+                                    samples=samples
+                                    )
+
+            data += trajectory
+            '''-----------------Compute likelihood before relearning the models-------'''
+            task_likelihoods = compute_likelihood(data, raw_models)
+
+            if (len(samples['reward'][0])) == config['episode_length']:
+                best_reward = max(best_reward, np.sum(samples["reward"]))
+            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * 0.02)
+            tbar.set_description(
+                ("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(-np.inf)) +
+                " Distance " + str(int(100 * best_distance) / 100) +
+                " likelihoods: " + str(task_likelihoods))
+            tbar.refresh()
+
+            x, y, high, low = process_data(data)
+            task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
+
+            task_likelihoods = task_likelihoods * 0
+            task_likelihoods[task_index] = 1.0
+            data_size = config['adapt_steps']
+            if data_size is None:
+                data_size = len(x)
+
+            models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
+                                             train_out=y[-data_size::], task_id=task_index, config=config)
+
+            traj_obs.extend(samples["obs"])
+            traj_acs.extend(samples["acs"])
+            traj_reward.extend(samples["reward"])
+            traj_rewards.extend(samples["rewards"])
+
+        """ save logs """
         with open(res_dir + "/costs_" + str(index) + ".txt", "a+") as f:
-            f.write(str(c)+"\n")
-
-        traj_obs.extend(samples["obs"])
-        traj_acs.extend(samples["acs"])
-        traj_reward.extend(samples["reward"])
-        traj_rewards.extend(samples["rewards"])
-
-
-        tbar.refresh()
+            f.write(str(c) + "\n")
 
         with open(os.path.join(config['logdir'], "logs.pk"), 'wb') as f:
             pickle.dump({
@@ -442,7 +551,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         all_action_seq.append(extract_action_seq(trajectory))
         all_costs.append(c)
 
-        np.save(res_dir + "/trajectories_"+str(index)+".npy", data)
+        np.save(res_dir + "/trajectories_" + str(index) + ".npy", data)
+
 
 #######################################################################################################
 
@@ -450,11 +560,12 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 20,
+    "iterations": 5,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
-    "online": False,
-    "adapt_steps": None, 
+    "online": True,
+    "adapt_steps": None,
+    "successive_steps": 50,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -480,26 +591,26 @@ config = {
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
-    
+
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/friction/run_0",
+    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
     "model_name": "spotmicro_meta_embedding_model",
-    "env_name": "meta_spotmicro_03",
+    "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "Default experiment.",
     "logdir": None,
-    
+
     # Model_parameters
-    "dim_in": 33+12,
+    "dim_in": 33 + 12,
     "dim_out": 33,
     "hidden_layers": [256, 256],
     "embedding_size": 2,
     "cuda": True,
     "output_limit": 10.0,
     "ensemble_batch_size": 16384,
-    
+
     # Meta learning parameters
     "meta_iter": 1000,  # 5000,
     "meta_step": 0.3,
@@ -516,7 +627,7 @@ config = {
 
     # Optimizer parameters
     "max_iters": 1,
-    "epsilon": 0.0001, 
+    "epsilon": 0.0001,
     "lb": -1,
     "ub": 1,
     "popsize": 10000,
@@ -526,30 +637,30 @@ config = {
     "max_action_jerk": 8000,  # 10000 from working controller
     "max_torque_jerk": 25,
     "num_elites": 30,
-    "cost_fn": None, 
+    "cost_fn": None,
     "alpha": 0.1,
     "discount": 1.0
 }
 
 # optional arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--iterations", 
-                    help='Total episodes in episodic learning. Total MPC steps in the experiment.', 
+parser.add_argument("--iterations",
+                    help='Total episodes in episodic learning. Total MPC steps in the experiment.',
                     type=int)
-parser.add_argument("--data_dir", 
-                    help='Path to load dynamics data and/or model', 
+parser.add_argument("--data_dir",
+                    help='Path to load dynamics data and/or model',
                     type=str)
-parser.add_argument("--exp_details", 
-                    help='Details about the experiment', 
+parser.add_argument("--exp_details",
+                    help='Details about the experiment',
                     type=str)
-parser.add_argument("--online", 
+parser.add_argument("--online",
                     action='store_true',
                     help='Will not reset back to init position', )
-parser.add_argument("--adapt_steps", 
-                    help='Past steps to be used to learn a new model from the meta model', 
+parser.add_argument("--adapt_steps",
+                    help='Past steps to be used to learn a new model from the meta model',
                     type=int)
-parser.add_argument("--control_steps", 
-                    help='Steps after which learn a new model => Learning frequency.', 
+parser.add_argument("--control_steps",
+                    help='Steps after which learn a new model => Learning frequency.',
                     type=int)
 parser.add_argument("--rand_motor_damage",
                     action='store_true',
@@ -562,7 +673,7 @@ parser.add_argument("--sample_model",
                     help='Sample a model (task-id) using the likelihood information. Default: Picks the most likely model.')
 parser.add_argument("--online_damage_probability",
                     help='Sample probabilistically random mismatch during mission. NOT used for episodic testing',
-                    default = 0.0,
+                    default=0.0,
                     type=float)
 parser.add_argument('-c', '--config', action='append', nargs=2, default=[])
 parser.add_argument('-logdir', type=str, default='None')
@@ -575,8 +686,10 @@ if arguments.online is True:
     config['online'] = True
     if arguments.adapt_steps is not None: config['adapt_steps'] = arguments.adapt_steps
     if arguments.control_steps is not None: config['episode_length'] = arguments.control_steps
-    if arguments.online_damage_probability is not None: config['online_damage_probability'] = arguments.online_damage_probability
-    print("Online learning with adaptation steps: ", config['adapt_steps'], " control steps: ", config['episode_length'])
+    if arguments.online_damage_probability is not None: config[
+        'online_damage_probability'] = arguments.online_damage_probability
+    print("Online learning with adaptation steps: ", config['adapt_steps'], " control steps: ",
+          config['episode_length'])
 else:
     print("Episodic learning with episode length: ", config['episode_length'])
 
@@ -584,10 +697,9 @@ if arguments.rand_motor_damage is not None: config['rand_motor_damage'] = argume
 if arguments.rand_orientation_fault is not None: config['rand_orientation_fault'] = arguments.rand_orientation_fault
 if arguments.sample_model is not None: config['sample_model'] = arguments.sample_model
 
-
 logdir = arguments.logdir
-config['logdir'] = None if logdir == 'None' else logdir    
-    
+config['logdir'] = None if logdir == 'None' else logdir
+
 for (key, val) in arguments.config:
     if key in ['horizon', 'K', 'popsize', 'iterations', 'n_ensembles', 'episode_length']:
         config[key] = int(val)
@@ -598,9 +710,12 @@ for (key, val) in arguments.config:
 
 config['sol_dim'] = config['horizon'] * config['action_dim']
 '''----------- Environment specific setup --------------'''
-test_mismatches = np.array([[0.5, 0, 0]])
 
 args = ["SpotMicroEnv-v0"]
+
+
+def check_config(config):
+    config['sol_dim'] = config['horizon'] * config['action_dim']
 
 
 def env_args_from_config(config):
@@ -624,14 +739,49 @@ def env_args_from_config(config):
     }
 
 
+def apply_config_params(conf, params):
+    for (key, val) in list(params.items()):
+        conf[key] = val
+    return conf
+
+
 kwargs = env_args_from_config(config)
 
 exp_dir = None
-for index in range(len(test_mismatches)):
+
+mismatches = ([0, 150, 300], [{}, {'friction': 0.2}, {'friction': 0.2, 'wind_force': 2}])
+test_mismatches = None
+
+# test_mismatches = [
+#     ([0, 150, 300], [{}, {'friction': 0.2}, {'friction': 0.2, 'wind_force': 2}])
+# ]
+
+config_params = []
+
+adapt_steps = [None, 50, 25]
+successive_steps = [50, 25]
+
+for a in adapt_steps:
+    for s in successive_steps:
+        config_params.append({"adapt_steps": a, "successive_steps": s})
+
+n_run = len(config_params)
+exp_dir = None
+assert test_mismatches is None or len(test_mismatches) == n_run
+for index in range(n_run):
     conf = copy.copy(config)
     conf['exp_dir'] = exp_dir
-    main(gym_args=args, gym_kwargs=kwargs, config=conf, test_mismatch=test_mismatches[index], index=index)
+    conf = apply_config_params(conf, config_params[index])
+    print('run ', index+1, " on ", n_run)
+    print("Params: ", config_params[index])
+    check_config(conf)
+    kwargs = env_args_from_config(conf)
+    current_mismatches = mismatches if test_mismatches is None else test_mismatches[index]
+    main(gym_args=args, gym_kwargs=kwargs, test_mismatch=current_mismatches,  index=index, config=conf)
     exp_dir = conf['exp_dir']
 
-with open(exp_dir+"/test_mismatches.txt", "w") as f:
-    f.write(str(test_mismatches))
+    if index == 0:
+        with open(exp_dir + "/test_mismatches.txt", "w") as f:
+            f.write(str(test_mismatches))
+        with open(exp_dir + "/config_params.txt", "w") as f:
+            f.write(str(config_params))
