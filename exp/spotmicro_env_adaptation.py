@@ -230,7 +230,8 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
             past = np.append(past, [np.copy(x)], axis=0)
         reward.append(r)
         rewards.append(info['rewards'])
-        observed_torques.extend(info['observed_torques'])
+        # observed_torques.extend(info['observed_torques'])
+        observed_torques = []
         desired_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
         current_state = next_state
@@ -291,7 +292,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         acs.append(np.copy(a))
         reward.append(r)
         rewards.append(info['rewards'])
-        observed_torques.extend(info['observed_torques'])
+        # observed_torques.extend(info['observed_torques'])
+        observed_torques = []
         past = np.append(past, [np.copy(x)], axis=0)
         desired_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
@@ -822,7 +824,7 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    {},
+    {'faulty_motors': [3,4,5], 'faulty_joints':[0,0,0]},
 ]
 
 test_mismatches = None
@@ -834,8 +836,8 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "test_mismatches"
-config_params = []
+# config['exp_suffix'] = "test_mismatches"
+# config_params = []
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
 # directory = '07_04_pretrained'
@@ -845,27 +847,27 @@ config_params = []
 #         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
 #         'test_mismatches': [test_mismatches[i]]})
 
-test_mismatches = [
-    {},
-    {'friction': 0.2},
-    {'wind_force': 2},
-    {'wind_force': -1},
-    {'faulty_motors': [4], 'faulty_joints': [0]},
-    {'faulty_motors': [5], 'faulty_joints': [-1]},
-    {'faulty_motors': [10], 'faulty_joints': [0]},
-    {'faulty_motors': [11], 'faulty_joints': [-1]},
-    {'load_weight': 2, 'load_pos': 0.07},
-    {'load_weight': 2, 'load_pos': -0.07},
-]
-
-run_mismatches = []
-for i in range(len(test_mismatches)):
-    if i == 0:
-        config_params.append({'test_mismatches': test_mismatches})
-    else:
-        config_params.append({'test_mismatches': [test_mismatches[i]]})
-    run_mismatches.append([test_mismatches[i]])
-
+# test_mismatches = [
+#     {},
+#     {'friction': 0.2},
+#     {'wind_force': 2},
+#     {'wind_force': -1},
+#     {'faulty_motors': [4], 'faulty_joints': [0]},
+#     {'faulty_motors': [5], 'faulty_joints': [-1]},
+#     {'faulty_motors': [10], 'faulty_joints': [0]},
+#     {'faulty_motors': [11], 'faulty_joints': [-1]},
+#     {'load_weight': 2, 'load_pos': 0.07},
+#     {'load_weight': 2, 'load_pos': -0.07},
+# ]
+#
+# run_mismatches = []
+# for i in range(len(test_mismatches)):
+#     if i == 0:
+#         config_params.append({'test_mismatches': test_mismatches})
+#     else:
+#         config_params.append({'test_mismatches': [test_mismatches[i]]})
+#     run_mismatches.append([test_mismatches[i]])
+#
 
 def apply_config_params(conf, params):
     for (key, val) in list(params.items()):
