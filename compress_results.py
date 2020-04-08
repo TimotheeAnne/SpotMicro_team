@@ -47,46 +47,49 @@ for exp in exps:
         os.makedirs(exp_copy)
     runs = os.listdir(path + exp)
     for run in runs:
-        run_copy = exp_copy + "/" + run
-        if copy:
-            os.makedirs(run_copy)
-        files = os.listdir(path+exp+"/"+run)
-        for file in files:
+        if run == 'config.txt':
+            shutil.copy2(path + exp + "/" + run, exp_copy + "/" + run)
+        else:
+            run_copy = exp_copy + "/" + run
             if copy:
-                if file in files_to_copy:
-                    shutil.copy2(path+exp+"/"+run+"/"+file, run_copy+"/"+file)
-                if file in dir_to_copy:
-                    copytree(path+exp+"/"+run+"/"+file, run_copy+"/"+file)
-            if file in ['logs.pk']:
-                compressed_data = {}
-                with open(path+exp+"/"+run+"/"+file, 'rb') as f:
-                    data = pickle.load(f)
-                Xs, Ls = [], []
-                for obs in data['observations']:
-                    X = [np.sum(np.array(x)[:, 30]) * 0.02 for x in obs]
-                    L = [len(x) * 0.02 for x in obs]
-                    Xs.append(np.copy(X))
-                    Ls.append(np.copy(L))
-                compressed_data['X'] = np.copy(Xs)
-                compressed_data['L'] = np.copy(Ls)
-                with open(run_copy+"/"+file, 'wb') as f:
-                    pickle.dump(compressed_data, f)
-            elif file in ['test_logs.pk']:
-                compressed_data = {}
-                with open(path+exp+"/"+run+"/"+file, 'rb') as f:
-                    data = pickle.load(f)
-                Xs, Ls = [], []
-                for model in data['observations']:
-                    Xs_model, Ls_model = [], []
-                    for env in model:
-                        X = [np.sum(np.array(x)[:, 30]) * 0.02 for x in env]
-                        L = [len(x) * 0.02 for x in env]
-                        Xs_model.append(np.copy(X))
-                        Ls_model.append(np.copy(L))
-                    Xs.append(np.copy(Xs_model))
-                    Ls.append(np.copy(Ls_model))
-                compressed_data['X'] = np.copy(Xs)
-                compressed_data['L'] = np.copy(Ls)
-                with open(run_copy+"/"+file, 'wb') as f:
-                    pickle.dump(compressed_data, f)
+                os.makedirs(run_copy)
+            files = os.listdir(path+exp+"/"+run)
+            for file in files:
+                if copy:
+                    if file in files_to_copy:
+                        shutil.copy2(path+exp+"/"+run+"/"+file, run_copy+"/"+file)
+                    if file in dir_to_copy:
+                        copytree(path+exp+"/"+run+"/"+file, run_copy+"/"+file)
+                if file in ['logs.pk']:
+                    compressed_data = {}
+                    with open(path+exp+"/"+run+"/"+file, 'rb') as f:
+                        data = pickle.load(f)
+                    Xs, Ls = [], []
+                    for obs in data['observations']:
+                        X = [np.sum(np.array(x)[:, 30]) * 0.02 for x in obs]
+                        L = [len(x) * 0.02 for x in obs]
+                        Xs.append(np.copy(X))
+                        Ls.append(np.copy(L))
+                    compressed_data['X'] = np.copy(Xs)
+                    compressed_data['L'] = np.copy(Ls)
+                    with open(run_copy+"/"+file, 'wb') as f:
+                        pickle.dump(compressed_data, f)
+                elif file in ['test_logs.pk']:
+                    compressed_data = {}
+                    with open(path+exp+"/"+run+"/"+file, 'rb') as f:
+                        data = pickle.load(f)
+                    Xs, Ls = [], []
+                    for model in data['observations']:
+                        Xs_model, Ls_model = [], []
+                        for env in model:
+                            X = [np.sum(np.array(x)[:, 30]) * 0.02 for x in env]
+                            L = [len(x) * 0.02 for x in env]
+                            Xs_model.append(np.copy(X))
+                            Ls_model.append(np.copy(L))
+                        Xs.append(np.copy(Xs_model))
+                        Ls.append(np.copy(Ls_model))
+                    compressed_data['X'] = np.copy(Xs)
+                    compressed_data['L'] = np.copy(Ls)
+                    with open(run_copy+"/"+file, 'wb') as f:
+                        pickle.dump(compressed_data, f)
 
