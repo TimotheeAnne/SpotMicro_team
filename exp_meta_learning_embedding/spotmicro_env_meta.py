@@ -264,7 +264,7 @@ def extract_action_seq(data):
     return np.array(actions)
 
 
-def compute_likelihood(data, models, adapt_steps, beta=1.0):
+def compute_likelihood(data, models, beta=1.0):
     """
     Computes MSE loss and then softmax to have a probability
     """
@@ -317,9 +317,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         json.dump(config, fp)
 
     '''---------Prepare the test environment---------------'''
-    env = gym.make(*gym_args, **gym_kwargs)    
-    trained_mismatches = np.load(config["data_dir"] + "/mismatches.npy")
-    n_training_tasks = len(trained_mismatches)
+    env = gym.make(*gym_args, **gym_kwargs)
     try:
         s = os.environ['DISPLAY']
         print("Display available")
@@ -339,12 +337,14 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         f.write("mismatches" + str(test_mismatch) + "\n")
 
     '''--------------------Meta learn the models---------------------------'''
-    if not path.exists(config["data_dir"] + "/"+ config["model_name"]+".pt"):
+    if not path.exists(config["data_dir"] + "/" + config["model_name"]+".pt"):
         print("Model not found. Learning from data...")
-        meta_data = np.load(config["data_dir"] + "/trajectories.npy", allow_pickle=True)
+        list_data_dir = os.listdir(config["data_dir"])
+        n_training_tasks = len(list_data_dir)-1 if 'config.txt' in list_data_dir else len(list_data_dir)
         tasks_in, tasks_out = [], []
         for n in range(n_training_tasks):
-            x, y, high, low = process_data(meta_data[n])
+            meta_data = np.load(config["data_dir"] + "run_"+str(n)+"/trajectories.npy", allow_pickle=True)
+            x, y, high, low = process_data(meta_data)
             tasks_in.append(x)
             tasks_out.append(y)
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
@@ -399,7 +399,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         
         data += trajectory
         '''-----------------Compute likelihood before relearning the models-------'''
-        task_likelihoods = compute_likelihood(data, raw_models, config['adapt_steps'])
+        task_likelihoods = compute_likelihood(data, raw_models)
 
         if (len(samples['reward'][0])) == config['episode_length']:
             best_reward = max(best_reward, np.sum(samples["reward"]))
