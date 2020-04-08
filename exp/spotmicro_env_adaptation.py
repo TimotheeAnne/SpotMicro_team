@@ -824,7 +824,7 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    {'faulty_motors': [3,4,5], 'faulty_joints':[0,0,0]},
+    {'faulty_motors': [3, 4, 5], 'faulty_joints':[0, 0, 0]},
 ]
 
 test_mismatches = None
@@ -836,8 +836,8 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-# config['exp_suffix'] = "test_mismatches"
-# config_params = []
+config['exp_suffix'] = "eval_mismatches"
+config_params = []
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
 # directory = '07_04_pretrained'
@@ -847,27 +847,27 @@ run_mismatches = None
 #         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
 #         'test_mismatches': [test_mismatches[i]]})
 
-# test_mismatches = [
-#     {},
-#     {'friction': 0.2},
-#     {'wind_force': 2},
-#     {'wind_force': -1},
-#     {'faulty_motors': [4], 'faulty_joints': [0]},
-#     {'faulty_motors': [5], 'faulty_joints': [-1]},
-#     {'faulty_motors': [10], 'faulty_joints': [0]},
-#     {'faulty_motors': [11], 'faulty_joints': [-1]},
-#     {'load_weight': 2, 'load_pos': 0.07},
-#     {'load_weight': 2, 'load_pos': -0.07},
-# ]
-#
-# run_mismatches = []
-# for i in range(len(test_mismatches)):
-#     if i == 0:
-#         config_params.append({'test_mismatches': test_mismatches})
-#     else:
-#         config_params.append({'test_mismatches': [test_mismatches[i]]})
-#     run_mismatches.append([test_mismatches[i]])
-#
+test_mismatches = [
+    {'friction': 0.2, 'wind_force': -2},
+    {'friction': 0.2, 'faulty_motors': [2], 'faulty_joints': [-1]},
+    {'friction': 0.2, 'load_weight': 2, 'load_pos': 0.06},
+
+    {'wind_force': 2, 'faulty_motors': [1], 'faulty_joints': [0]},
+    {'wind_force': -2, 'faulty_motors': [8], 'faulty_joints': [-1]},
+    {'wind_force': -2, 'load_weight': 2, 'load_pos': -0.06, },
+
+    {'load_weight': 1, 'load_pos': 0.06, 'faulty_motors': [7], 'faulty_joints': [0]},
+
+]
+
+run_mismatches = []
+for i in range(len(test_mismatches)):
+    if i == 0:
+        config_params.append({'test_mismatches': test_mismatches})
+    else:
+        config_params.append({'test_mismatches': [test_mismatches[i]]})
+    run_mismatches.append([test_mismatches[i]])
+
 
 def apply_config_params(conf, params):
     for (key, val) in list(params.items()):
