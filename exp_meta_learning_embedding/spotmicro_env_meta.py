@@ -20,15 +20,13 @@ from fast_adaptation_embedding.controllers.random_shooting import RS_opt
 
 
 class Cost(object):
-    def __init__(self, model, init_state, horizon, action_dim, goal, pred_high, pred_low, config, last_action,
+    def __init__(self, model, init_state, horizon, action_dim, goal, config, last_action,
                  task_likelihoods, speed=None):
         self.__models = model
         self.__init_state = init_state
         self.__horizon = horizon
         self.__action_dim = action_dim
         self.__goal = goal
-        self.__pred_high = pred_high
-        self.__pred_low = pred_low
         self.__obs_dim = len(init_state)
         self.__discount = config['discount']
         self.__batch_size = config['ensemble_batch_size']
@@ -169,7 +167,7 @@ def train_meta(tasks_in, tasks_out, config):
                                   output_limit=config["output_limit"],
                                   dropout=0.0,
                                   hidden_activation=config["hidden_activation"])
-    task_losses = nn_model.train_meta(model,
+    task_losses, saved_embeddings = nn_model.train_meta(model,
                                       tasks_in,
                                       tasks_out,
                                       meta_iter=config["meta_iter"],
@@ -178,7 +176,7 @@ def train_meta(tasks_in, tasks_out, config):
                                       meta_step=config["meta_step"],
                                       minibatch=config["meta_batch_size"],
                                       inner_sample_size=config["inner_sample_size"])
-    return model, task_losses
+    return model, task_losses, saved_embeddings
 
 
 def train_model(model, train_in, train_out, task_id, config):
@@ -205,8 +203,8 @@ def process_data(data):
     return np.array(training_in), np.array(training_out), np.max(training_in, axis=0), np.min(training_in, axis=0)
 
 
-def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, pred_high, task_likelihoods,
-            pred_low, K, index_iter, final_iter, samples, env_index=0, n_task=1, n_model=1, model_index=0,
+def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, task_likelihoods,
+            K, index_iter, final_iter, samples, env_index=0, n_task=1, n_model=1, model_index=0,
             test=False, ):
     index_iter = index_iter // (n_task * n_model)
     if config['record_video']:
@@ -226,8 +224,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(model=model, init_state=current_state, horizon=config["horizon"],
-                           action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
-                           pred_low=pred_low, config=config, last_action=virtual_acs, speed=None,
+                           action_dim=env.action_space.shape[0], goal=config["goal"],
+                           config=config, last_action=virtual_acs, speed=None,
                            task_likelihoods=task_likelihoods)
 
         config["cost_fn"] = cost_object.cost_fn
@@ -262,13 +260,13 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     return trajectory, traject_cost
 
 
-def execute_online(env, steps, model, config, task_likelihoods, pred_low, pred_high, K, samples,
+def execute_online(env, steps, model, config, task_likelihoods, K, samples,
                    current_state, recorder, trajectory, traject_cost, past):
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(model=model, init_state=current_state, horizon=config["horizon"],
-                           action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
-                           pred_low=pred_low, config=config, last_action=virtual_acs, speed=None,
+                           action_dim=env.action_space.shape[0], goal=config["goal"],
+                           config=config, last_action=virtual_acs, speed=None,
                            task_likelihoods=task_likelihoods)
 
         config["cost_fn"] = cost_object.cost_fn
@@ -380,7 +378,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         f.write("mismatches" + str(test_mismatch) + "\n")
 
     '''--------------------Meta learn the models---------------------------'''
-    if not path.exists(config["data_dir"] + "/" + config["model_name"] + ".pt"):
+    if not path.exists(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
         for n in range(n_training_tasks):
@@ -389,13 +387,15 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             tasks_in.append(x)
             tasks_out.append(y)
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
-        meta_model, task_losses = train_meta(tasks_in, tasks_out, config)
-        meta_model.save(config["data_dir"] + "/" + config["model_name"] + ".pt")
-        np.save(config["data_dir"] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
+        meta_model, task_losses, saved_embeddings = train_meta(tasks_in, tasks_out, config)
+        os.mkdir(config["data_dir"] + "/meta_model")
+        meta_model.save(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt")
+        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_task_losses.npy", task_losses)
+        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
     else:
         print("Model found. Loading from '.pt' file...")
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-        meta_model = nn_model.load_model(config["data_dir"] + "/" + config["model_name"] + ".pt", device)
+        meta_model = nn_model.load_model(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt", device)
 
     raw_models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
     models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
@@ -446,8 +446,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                                                samples=samples,
                                                current_state=current_state,
                                                recorder=recorder,
-                                               pred_high=high,
-                                               pred_low=low,
                                                K=config['K'],
                                                trajectory=trajectory,
                                                traject_cost=c,
@@ -498,8 +496,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                                     config=config,
                                     last_action_seq=None,
                                     task_likelihoods=task_likelihoods,
-                                    pred_high=high,
-                                    pred_low=low,
                                     K=config['K'],
                                     index_iter=index_iter,
                                     final_iter=config["iterations"],
@@ -606,13 +602,13 @@ config = {
     "dim_in": 33 + 12,
     "dim_out": 33,
     "hidden_layers": [256, 256],
-    "embedding_size": 2,
+    "embedding_size": 10,
     "cuda": True,
     "output_limit": 10.0,
     "ensemble_batch_size": 16384,
 
     # Meta learning parameters
-    "meta_iter": 1000,  # 5000,
+    "meta_iter": 5000,  # 5000,
     "meta_step": 0.3,
     "inner_iter": 10,  # 10,
     "inner_step": 0.0001,
@@ -749,7 +745,7 @@ kwargs = env_args_from_config(config)
 
 exp_dir = None
 
-mismatches = ([0, 150, 300], [{}, {'friction': 0.2}, {'friction': 0.2, 'wind_force': 2}])
+mismatches = ([0, 150], [{}, {'friction': 0.2}])
 test_mismatches = None
 
 # test_mismatches = [
@@ -758,8 +754,8 @@ test_mismatches = None
 
 config_params = []
 
-adapt_steps = [None, 50, 25]
-successive_steps = [50, 25]
+adapt_steps = [None, 100, 50]
+successive_steps = [50, 10]
 
 for a in adapt_steps:
     for s in successive_steps:
