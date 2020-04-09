@@ -120,7 +120,7 @@ class Embedding_NN(nn.Module):
         Fix the task id for the network so that output can be predicted just sending the x alone.
         '''
         if task_id is not None:
-            assert task_id >= 0 and task_id < self.num_tasks, "task_id must be a positive integer less than number of tasks"
+            assert task_id >= 0 and task_id < self.num_tasks, "task_id must be a positive integer less than number of tasks "+str(self.num_tasks)
             self._fixed_task_id = task_id
 
     def get_embedding(self, task_ids):
@@ -206,7 +206,9 @@ def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_
 
     task_losses = np.zeros(len(tasks_in))
     Task_losses = [[] for _ in range(len(tasks_in))]
-    # ~ bar = ProgBar(meta_iter, track_time=True, title='\nMeta learning the network...', bar_char='█')
+
+    saved_embeddings = torch.empty((int(meta_iter/len(tasks_in))+1, len(tasks_in), model.embedding_dim))
+    saved_embeddings[0] = deepcopy(model.embeddings.weight)
     tbar = tqdm(range(meta_iter))
     for meta_count in tbar:
         weights_before = deepcopy(model.state_dict())
@@ -234,21 +236,19 @@ def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_
                     param.data -= inner_step * param.grad.data
                 final_loss.append(loss.item() / batch_size)
 
-        # print("Should be empty: ", task_losses)
         task_losses[task_index] = np.mean(final_loss)
         Task_losses[task_index].append(np.mean(final_loss))
         tbar.set_description(str(task_losses))
-        # print(task_losses)
-        # input()
+
         model.train(mode=False)
         weights_after = model.state_dict()
         stepsize = meta_step * (1 - meta_count / meta_iter)  # linear schedule
         model.load_state_dict(
             {name: weights_before[name] + (weights_after[name] - weights_before[name]) * stepsize for name in
              weights_before})
-        # bar.update(item_id= "Iter " + str(meta_count) + " | All task Loss: "+str(np.mean(task_losses)))
-        # ~ bar.update(item_id= "Iter " + str(meta_count) + " | All task Loss: " + str(task_losses.tolist()))
-    return Task_losses
+        if (meta_count+1) % len(tasks_in) == 0:
+            saved_embeddings[int((meta_count+1)/len(tasks_in))] = deepcopy(model.embeddings.weight)
+    return Task_losses, saved_embeddings.detach().cpu().numpy()
 
 
 def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, optimizer=None):
