@@ -23,11 +23,11 @@ from tqdm import tqdm, trange
 try:
     from pynput.keyboard import Key, Listener
 except:
-    print('Cannot use online testing')
+    print('Cannot use real_time testing')
 
 
 class Cost(object):
-    def __init__(self, ensemble_model, init_state, horizon, action_dim, goal, pred_high, pred_low, config, last_action,
+    def __init__(self, ensemble_model, init_state, horizon, action_dim, goal, config, last_action,
                  speed=None):
         self.__ensemble_model = ensemble_model
         self.__init_state = init_state
@@ -35,8 +35,6 @@ class Cost(object):
         self.__action_dim = action_dim
         self.__goal = goal
         self.__models = self.__ensemble_model.get_models()
-        self.__pred_high = pred_high
-        self.__pred_low = pred_low
         self.__obs_dim = len(init_state)
         self.__discount = config['discount']
         self.__batch_size = config['ensemble_batch_size']
@@ -82,7 +80,7 @@ class Cost(object):
                 amax = torch.min(amax,
                                  3 * a[:, (t - 1) * ad:t * ad] - 3 * a[:, (t - 2) * ad:(t - 1) * ad] + a[:,
                                                                                                        (t - 3) * ad:(
-                                                                                                                                t - 2) * ad] + max_jerk,
+                                                                                                                            t - 2) * ad] + max_jerk,
                                  out=None)
                 amin = torch.max(a[:, (t - 1) * ad:t * ad] - max_vel,
                                  2 * a[:, (t - 1) * ad:t * ad] - a[:, (t - 2) * ad:(t - 1) * ad] - max_acc,
@@ -250,8 +248,8 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
     return np.array(trajectory), traject_cost
 
 
-def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq, pred_high,
-            pred_low, K, index_iter, final_iter, samples, env_index, n_task, n_model=0, model_index=0, test=False):
+def execute(env, init_state, steps, init_mean, init_var, model, config, last_action_seq,
+            K, index_iter, final_iter, samples, env_index, n_task, n_model=0, model_index=0, test=False):
     index_iter = index_iter // (n_task * n_model) if test else (index_iter // n_task - config["random_episodes"])
     if config['record_video']:
         if test and (index_iter % config['video_recording_frequency'] == 0 or index_iter == final_iter - 1):
@@ -274,8 +272,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                           action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
-                           pred_low=pred_low, config=config, last_action=virtual_acs, speed=None)
+                           action_dim=env.action_space.shape[0], goal=config["goal"],
+                           config=config, last_action=virtual_acs, speed=None)
 
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
@@ -315,7 +313,38 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     return np.array(trajectory), traject_cost
 
 
-def execute_online(env, model, config, pred_high, pred_low, K):
+def execute_online(env, steps, model, config, K, samples,
+                   current_state, recorder, trajectory, traject_cost, past):
+    for t in range(steps):
+        virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
+        cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
+                           action_dim=env.action_space.shape[0], goal=config["goal"],
+                           config=config, last_action=virtual_acs, speed=None)
+        config["cost_fn"] = cost_object.cost_fn
+        optimizer = RS_opt(config)
+        sol = optimizer.obtain_solution(acs=virtual_acs)
+        x = sol[0:env.action_space.shape[0]]
+        a = np.copy(x)
+        next_state, r = 0, 0
+        for k in range(K):
+            next_state, rew, done, info = env.step(a)
+            r += rew
+            if recorder is not None:
+                recorder.capture_frame()
+        trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
+        current_state = next_state
+        traject_cost += -r
+        past = np.append(past, [np.copy(x)], axis=0)
+        samples['acs'].append(np.copy(a))
+        samples['obs'].append(np.copy(next_state))
+        samples['reward'].append(r)
+        samples['rewards'].append(info['rewards'])
+        if done:
+            break
+    return traject_cost, done, past
+
+
+def execute_real_time(env, model, config, K):
     current_state = env.reset()
 
     past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
@@ -374,8 +403,8 @@ def execute_online(env, model, config, pred_high, pred_low, K):
             if MPC:
                 virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
                 cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                                   action_dim=env.action_space.shape[0], goal=config["goal"], pred_high=pred_high,
-                                   pred_low=pred_low, config=config, last_action=virtual_acs, speed=vd)
+                                   action_dim=env.action_space.shape[0], goal=config["goal"],
+                                   config=config, last_action=virtual_acs, speed=vd)
 
                 config["cost_fn"] = cost_object.cost_fn
                 optimizer = RS_opt(config)
@@ -489,7 +518,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         config['iterations'] = 0
         print("Found pretrained model. Passing directly to testing model.")
 
-    elif os.path.exists(config["data_dir"] + "/trajectories.npy") and os.path.exists(config["data_dir"] + "/mismatches.npy"):
+    elif os.path.exists(config["data_dir"] + "/trajectories.npy") and os.path.exists(
+            config["data_dir"] + "/mismatches.npy"):
         print("Found stored data. Setting random trials to zero.")
         data = np.load(config["data_dir"] + "/trajectories.npy")
         mismatches = np.load(config["data_dir"] + "/mismatches.npy")
@@ -541,8 +571,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                                     init_var=0.1 * np.ones(config["sol_dim"]),
                                     config=config,
                                     last_action_seq=best_action_seq,
-                                    pred_high=high,
-                                    pred_low=low,
                                     K=config['K'],
                                     index_iter=index_iter,
                                     final_iter=config["iterations"],
@@ -617,38 +645,86 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 with open(res_dir + "/test_model_" + str(j) + "_costs_task_" + str(i) + ".txt", "w+") as f:
                     f.write("")
 
-        np.save(res_dir + '/test_mismatches.npy', mismatches)
+        np.save(res_dir + '/test_mismatches.npy', test_mismatches)
         t = trange(config["test_iterations"] * n_task * len(models), desc='', leave=True)
         for index_iter in t:
-            '''Pick a random environment'''
-            env_index = int(index_iter / len(models)) % n_task  # np.random.randint(0, n_task)
-            env.set_mismatch(test_mismatches[env_index])
-            model_index = index_iter % len(models)
-            samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
+            if config['online']:
+                samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
+                           'observed_torques': []}
+                model_index = index_iter % len(models)
+                env_index = int(index_iter / len(models)) % n_task
+                local_index = index_iter // (n_task * len(models))
+                if (local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config["test_iterations"] - 1:
+                    recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(local_index) + ".mp4")
+                else:
+                    recorder = None
+                c = 0
+                init_mismatch = test_mismatches[env_index][1][0]
+                env.set_mismatch(init_mismatch)
+                current_state = env.reset(hard_reset=True)
+                past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
+                n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
+                for adapt_steps in range(n_adapt_steps):
+                    steps = adapt_steps * config['successive_steps']
+                    if steps in test_mismatches[env_index][0]:
+                        mismatch_index = test_mismatches[env_index][0].index(steps)
+                        env.set_mismatch(test_mismatches[env_index][1][mismatch_index])
+                    trajectory = []
+                    c, done, past = execute_online(env=env,
+                                                   steps=config['successive_steps'],
+                                                   model=models[model_index],
+                                                   config=config,
+                                                   samples=samples,
+                                                   current_state=current_state,
+                                                   recorder=recorder,
+                                                   K=config['K'],
+                                                   trajectory=trajectory,
+                                                   traject_cost=c,
+                                                   past=past
+                                                   )
+                    if done:
+                        break
+                if (len(samples['reward'])) == config['episode_length']:
+                    best_reward = max(best_reward, np.sum(samples["reward"]))
+                best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, 30]) * 0.02)
+                t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
+                    -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
+                t.refresh()
 
-            '''------------Update models------------'''
-            _, c = execute(env=env,
-                           init_state=config["init_state"],
-                           model=models[model_index],
-                           model_index=model_index,
-                           steps=config["episode_length"],
-                           init_mean=best_action_seq[0:config["sol_dim"]],
-                           init_var=0.1 * np.ones(config["sol_dim"]),
-                           config=config,
-                           last_action_seq=best_action_seq,
-                           pred_high=None,
-                           pred_low=None,
-                           K=config['K'],
-                           index_iter=index_iter,
-                           final_iter=config["test_iterations"],
-                           samples=samples,
-                           env_index=env_index,
-                           n_task=n_task,
-                           n_model=len(models),
-                           test=True)
+            else:
+                '''Pick a random environment'''
+                env_index = int(index_iter / len(models)) % n_task
+                env.set_mismatch(test_mismatches[env_index])
+                model_index = index_iter % len(models)
+                samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
 
-            with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt",
-                      "a+") as f:
+                '''------------Update models------------'''
+                _, c = execute(env=env,
+                               init_state=config["init_state"],
+                               model=models[model_index],
+                               model_index=model_index,
+                               steps=config["episode_length"],
+                               init_mean=best_action_seq[0:config["sol_dim"]],
+                               init_var=0.1 * np.ones(config["sol_dim"]),
+                               config=config,
+                               last_action_seq=best_action_seq,
+                               K=config['K'],
+                               index_iter=index_iter,
+                               final_iter=config["test_iterations"],
+                               samples=samples,
+                               env_index=env_index,
+                               n_task=n_task,
+                               n_model=len(models),
+                               test=True)
+
+                if (len(samples['reward'][0])) == config['episode_length']:
+                    best_reward = max(best_reward, np.sum(samples["reward"]))
+                best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * 0.02)
+                t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
+                    -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
+                t.refresh()
+
+            with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt","a+") as f:
                 f.write(str(c) + "\n")
 
             traj_obs[model_index][env_index].extend(samples["obs"])
@@ -657,13 +733,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             traj_rewards[model_index][env_index].extend(samples["rewards"])
             traj_desired_torques[model_index][env_index].extend(samples["desired_torques"])
             traj_observed_torques[model_index][env_index].extend(samples["observed_torques"])
-
-            if (len(samples['reward'][0])) == config['episode_length']:
-                best_reward = max(best_reward, np.sum(samples["reward"]))
-            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * 0.02)
-            t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
-                -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
-            t.refresh()
 
             with open(os.path.join(config['logdir'], "test_logs.pk"), 'wb') as f:
                 pickle.dump({
@@ -676,7 +745,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 }, f)
 
 
-def online_test(gym_args, mismatches, config, gym_kwargs={}):
+def real_time_test(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
     assert config['pretrained_model'] is not None, "must give an existing logdir"
     res_dir = config['pretrained_model']
@@ -692,7 +761,7 @@ def online_test(gym_args, mismatches, config, gym_kwargs={}):
     config['max_action_velocity'] = config['max_action_velocity'] / alpha * config['ctrl_time_step']
     config['max_action_acceleration'] = config['max_action_acceleration'] / alpha * config['ctrl_time_step'] ** 2
     config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
-    execute_online(env=env, model=models, config=config, pred_high=None, pred_low=None, K=config['K'])
+    execute_real_time(env=env, model=models, config=config, K=config['K'])
 
 
 ################################################################################
@@ -705,7 +774,9 @@ config = {
     "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
-    "test_iterations": 20,
+    "online": True,
+    "successive_steps": 50,
+    "test_iterations": 1,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -824,10 +895,13 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    {'faulty_motors': [3, 4, 5], 'faulty_joints':[0, 0, 0]},
+    {},
 ]
 
 test_mismatches = None
+test_mismatches = [
+    ([0, 150], [{'faulty_motors': [3, 4, 5], 'faulty_joints': [0, 0, 0]}, {'friction': 0.2, 'faulty_motors': [3, 4, 5], 'faulty_joints': [0, 0, 0]}])
+]
 
 config['test_mismatches'] = test_mismatches
 
@@ -839,34 +913,32 @@ run_mismatches = None
 config['exp_suffix'] = "eval_mismatches"
 config_params = []
 
-# path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
-# directory = '07_04_pretrained'
-#
-# for i in range(len(test_mismatches)):
-#     config_params.append({
-#         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
-#         'test_mismatches': [test_mismatches[i]]})
+path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
+directory = '07_04_2020_13_58_16_experiment'
 
-test_mismatches = [
-    {'friction': 0.2, 'wind_force': -2},
-    {'friction': 0.2, 'faulty_motors': [2], 'faulty_joints': [-1]},
-    {'friction': 0.2, 'load_weight': 2, 'load_pos': 0.06},
-
-    {'wind_force': 2, 'faulty_motors': [1], 'faulty_joints': [0]},
-    {'wind_force': -2, 'faulty_motors': [8], 'faulty_joints': [-1]},
-    {'wind_force': -2, 'load_weight': 2, 'load_pos': -0.06, },
-
-    {'load_weight': 1, 'load_pos': 0.06, 'faulty_motors': [7], 'faulty_joints': [0]},
-
-]
-
-run_mismatches = []
 for i in range(len(test_mismatches)):
-    if i == 0:
-        config_params.append({'test_mismatches': test_mismatches})
-    else:
-        config_params.append({'test_mismatches': [test_mismatches[i]]})
-    run_mismatches.append([test_mismatches[i]])
+    config_params.append({
+        'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
+        'test_mismatches': [test_mismatches[i]]})
+
+
+# test_mismatches = [
+#     {'friction': 0.2, 'wind_force': -2},
+#     {'friction': 0.2, 'faulty_motors': [2], 'faulty_joints': [-1]},
+#     {'friction': 0.2, 'load_weight': 1, 'load_pos': 0.07},
+#
+#     {'wind_force': 2, 'faulty_motors': [1], 'faulty_joints': [0]},
+#     {'wind_force': -2, 'faulty_motors': [8], 'faulty_joints': [-1]},
+#     {'wind_force': -2, 'load_weight': 1, 'load_pos': -0.07, },
+#
+#     {'load_weight': 1, 'load_pos': 0.06, 'faulty_motors': [7], 'faulty_joints': [0]},
+#
+# ]
+#
+# run_mismatches = []
+# for i in range(len(test_mismatches)):
+#     config_params.append({'test_mismatches': [test_mismatches[i]]})
+#     run_mismatches.append([test_mismatches[i]])
 
 
 def apply_config_params(conf, params):
@@ -896,10 +968,10 @@ def env_args_from_config(config):
     }
 
 
-online = False
-# online = True
+real_time = False
+# real_time = True
 
-if online:
+if real_time:
     config["xreward"] = 1
     config["rollreward"] = 1
     config["pitchreward"] = 1
@@ -912,8 +984,8 @@ if online:
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
     kwargs = env_args_from_config(config)
-    online_mismatches = [{}]
-    online_test(gym_args=args, gym_kwargs=kwargs, mismatches=online_mismatches, config=config)
+    real_time_mismatches = [{}]
+    real_time_test(gym_args=args, gym_kwargs=kwargs, mismatches=real_time_mismatches, config=config)
 else:
     if config_params is None:
         # For one-run experiment
@@ -929,7 +1001,7 @@ else:
             conf = copy.copy(config)
             conf['exp_dir'] = exp_dir
             conf = apply_config_params(conf, config_params[run])
-            print('run ', run, " on ", n_run)
+            print('run ', run + 1, " on ", n_run)
             print("Params: ", config_params[run])
             check_config(conf)
             kwargs = env_args_from_config(conf)
