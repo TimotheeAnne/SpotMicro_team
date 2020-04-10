@@ -592,8 +592,8 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/default_friction",
-    'training_tasks_index': [0, 1],
+    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
+    'training_tasks_index': [0, 4],
     "model_name": "spotmicro_meta_embedding_model",
     "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
