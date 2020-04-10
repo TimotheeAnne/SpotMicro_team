@@ -355,21 +355,22 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     '''---------Prepare the test environment---------------'''
     env = gym.make(*gym_args, **gym_kwargs)
     list_data_dir = os.listdir(config["data_dir"])
-    n_training_tasks = 0
-    for name in list_data_dir:
-        if "run" in name:
-            n_training_tasks += 1
+    if config['training_tasks_index'] is None:
+        n_training_tasks = 0
+        for name in list_data_dir:
+            if "run" in name:
+                n_training_tasks += 1
+    else:
+        n_training_tasks = len(config['training_tasks_index'])
     try:
         s = os.environ['DISPLAY']
-        print("Display available")
         # env.render(mode="rgb_array")
         env.render(mode="human")
         env.reset()
     except:
-        print("Display not available")
+        # print("Display not available")
         env.reset()
 
-    print("\n\n\n")
     '''---------Initialize global variables------------------'''
     data = []
     all_action_seq = []
@@ -381,7 +382,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     if not path.exists(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
-        for n in range(n_training_tasks):
+        tasks_list = range(n_training_tasks) if config['training_tasks_index'] is None else config['training_tasks_index']
+        for n in tasks_list:
             meta_data = np.load(config["data_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
             x, y, high, low = process_data(meta_data[0])
             tasks_in.append(x)
@@ -556,7 +558,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 5,
+    "iterations": 20,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -590,7 +592,8 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
+    "data_dir": "data/spotmicro/default_friction",
+    'training_tasks_index': [0, 1],
     "model_name": "spotmicro_meta_embedding_model",
     "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
@@ -602,7 +605,7 @@ config = {
     "dim_in": 33 + 12,
     "dim_out": 33,
     "hidden_layers": [256, 256],
-    "embedding_size": 10,
+    "embedding_size": 2,
     "cuda": True,
     "output_limit": 10.0,
     "ensemble_batch_size": 16384,
@@ -745,7 +748,7 @@ kwargs = env_args_from_config(config)
 
 exp_dir = None
 
-mismatches = ([0, 150], [{}, {'friction': 0.2}])
+mismatches = ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
 test_mismatches = None
 
 # test_mismatches = [
@@ -754,8 +757,8 @@ test_mismatches = None
 
 config_params = []
 
-adapt_steps = [None, 100, 50]
-successive_steps = [50, 10]
+adapt_steps = [50, 25, None]
+successive_steps = [25, 10]
 
 for a in adapt_steps:
     for s in successive_steps:
@@ -781,3 +784,4 @@ for index in range(n_run):
             f.write(str(test_mismatches))
         with open(exp_dir + "/config_params.txt", "w") as f:
             f.write(str(config_params))
+    print("\n")
