@@ -684,12 +684,23 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                                                    )
                     if done:
                         break
+
+                if recorder is not None:
+                    recorder.close()
+
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
                 best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, 30]) * 0.02)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
+
+                traj_obs[model_index][env_index].append(samples["obs"])
+                traj_acs[model_index][env_index].append(samples["acs"])
+                traj_reward[model_index][env_index].append(samples["reward"])
+                traj_rewards[model_index][env_index].append(samples["rewards"])
+                traj_desired_torques[model_index][env_index].append(samples["desired_torques"])
+                traj_observed_torques[model_index][env_index].append(samples["observed_torques"])
 
             else:
                 '''Pick a random environment'''
@@ -724,15 +735,17 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
 
+                traj_obs[model_index][env_index].extend(samples["obs"])
+                traj_acs[model_index][env_index].extend(samples["acs"])
+                traj_reward[model_index][env_index].extend(samples["reward"])
+                traj_rewards[model_index][env_index].extend(samples["rewards"])
+                traj_desired_torques[model_index][env_index].extend(samples["desired_torques"])
+                traj_observed_torques[model_index][env_index].extend(samples["observed_torques"])
+
             with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt","a+") as f:
                 f.write(str(c) + "\n")
 
-            traj_obs[model_index][env_index].extend(samples["obs"])
-            traj_acs[model_index][env_index].extend(samples["acs"])
-            traj_reward[model_index][env_index].extend(samples["reward"])
-            traj_rewards[model_index][env_index].extend(samples["rewards"])
-            traj_desired_torques[model_index][env_index].extend(samples["desired_torques"])
-            traj_observed_torques[model_index][env_index].extend(samples["observed_torques"])
+
 
             with open(os.path.join(config['logdir'], "test_logs.pk"), 'wb') as f:
                 pickle.dump({
@@ -776,7 +789,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 1,
+    "test_iterations": 20,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -900,7 +913,8 @@ mismatches = [
 
 test_mismatches = None
 test_mismatches = [
-    ([0, 150], [{'faulty_motors': [3, 4, 5], 'faulty_joints': [0, 0, 0]}, {'friction': 0.2, 'faulty_motors': [3, 4, 5], 'faulty_joints': [0, 0, 0]}])
+    ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
 ]
 
 config['test_mismatches'] = test_mismatches
@@ -913,32 +927,24 @@ run_mismatches = None
 config['exp_suffix'] = "eval_mismatches"
 config_params = []
 
-path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
-directory = '07_04_2020_13_58_16_experiment'
-
-for i in range(len(test_mismatches)):
-    config_params.append({
-        'pretrained_model': path + config['env_name'] + "/" + directory + "/run_0",
-        'test_mismatches': [test_mismatches[i]]})
-
-
-# test_mismatches = [
-#     {'friction': 0.2, 'wind_force': -2},
-#     {'friction': 0.2, 'faulty_motors': [2], 'faulty_joints': [-1]},
-#     {'friction': 0.2, 'load_weight': 1, 'load_pos': 0.07},
+# path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
+# directory = '07_04_2020_11_10_01_test_mismatches_copy'
 #
-#     {'wind_force': 2, 'faulty_motors': [1], 'faulty_joints': [0]},
-#     {'wind_force': -2, 'faulty_motors': [8], 'faulty_joints': [-1]},
-#     {'wind_force': -2, 'load_weight': 1, 'load_pos': -0.07, },
-#
-#     {'load_weight': 1, 'load_pos': 0.06, 'faulty_motors': [7], 'faulty_joints': [0]},
-#
-# ]
-#
-# run_mismatches = []
 # for i in range(len(test_mismatches)):
-#     config_params.append({'test_mismatches': [test_mismatches[i]]})
-#     run_mismatches.append([test_mismatches[i]])
+#     config_params.append({
+#         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_"+str(i),
+#         'test_mismatches': [test_mismatches[i]]})
+
+
+test_mismatches = [
+    {},
+    {'faulty_motors': [4], 'faulty_joints': [0]},
+]
+
+run_mismatches = []
+for i in range(len(test_mismatches)):
+    config_params.append({'test_mismatches': [test_mismatches]})
+    run_mismatches.append([test_mismatches[i]])
 
 
 def apply_config_params(conf, params):
