@@ -410,7 +410,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     '''------------------------Test time------------------------------------'''
     high, low = np.ones(config["dim_out"]) * 1000., -np.ones(config["dim_out"]) * 1000.
 
-    traj_obs, traj_acs, traj_reward, traj_rewards = [], [], [], []
+    traj_obs, traj_acs, traj_reward, traj_rewards, traj_likelihood = [], [], [], [], []
     best_reward, best_distance = -np.inf, 0
     tbar = trange(config["iterations"], desc='', leave=True)
 
@@ -420,7 +420,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
 
     for index_iter in tbar:
-        samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': []}
+        samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'likelihood': []}
         task_likelihoods = np.random.rand(n_training_tasks)
 
         if config['online']:
@@ -455,21 +455,22 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                                                )
                 if done:
                     break
-                data += trajectory
+                data = trajectory
                 '''-----------------Compute likelihood before relearning the models-------'''
-                task_likelihoods = compute_likelihood(data, raw_models)
+                if steps < config['stop_adapatation_step']:
+                    task_likelihoods = compute_likelihood(data, raw_models)
+                    samples['likelihood'].append(np.copy(task_likelihoods))
+                    x, y, high, low = process_data(data)
+                    task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
 
-                x, y, high, low = process_data(data)
-                task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
+                    task_likelihoods = task_likelihoods * 0
+                    task_likelihoods[task_index] = 1.0
+                    data_size = config['adapt_steps']
+                    if data_size is None:
+                        data_size = len(x)
 
-                task_likelihoods = task_likelihoods * 0
-                task_likelihoods[task_index] = 1.0
-                data_size = config['adapt_steps']
-                if data_size is None:
-                    data_size = len(x)
-
-                models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
-                                                 train_out=y[-data_size::], task_id=task_index, config=config)
+                    models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
+                                                     train_out=y[-data_size::], task_id=task_index, config=config)
 
             if recorder is not None:
                 recorder.close()
@@ -486,6 +487,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             traj_acs.append(samples["acs"])
             traj_reward.append(samples["reward"])
             traj_rewards.append(samples["rewards"])
+            traj_likelihood.append(samples["likelihood"])
         else:
             new_mismatch = test_mismatch
             env.set_mismatch(new_mismatch)
@@ -507,7 +509,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             data += trajectory
             '''-----------------Compute likelihood before relearning the models-------'''
             task_likelihoods = compute_likelihood(data, raw_models)
-
+            samples['likelyhood'].append(np.copy(task_likelihoods))
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
             best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * 0.02)
@@ -533,6 +535,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             traj_acs.extend(samples["acs"])
             traj_reward.extend(samples["reward"])
             traj_rewards.extend(samples["rewards"])
+            traj_likelihood.append(samples["likelihood"])
 
         """ save logs """
         with open(res_dir + "/costs_" + str(index) + ".txt", "a+") as f:
@@ -544,6 +547,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 "actions": traj_acs,
                 "reward": traj_reward,
                 "rewards": traj_rewards,
+                "likelihood": traj_likelihood,
             }, f)
 
         all_action_seq.append(extract_action_seq(trajectory))
@@ -564,6 +568,7 @@ config = {
     "online": True,
     "adapt_steps": None,
     "successive_steps": 50,
+    "stop_adapatation_step": 10000,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -585,7 +590,7 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": True,
+    "record_video": 0,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
@@ -748,7 +753,8 @@ kwargs = env_args_from_config(config)
 
 exp_dir = None
 
-mismatches = ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
+mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
+# mismatches = ([0], [{}])
 test_mismatches = None
 
 # test_mismatches = [
@@ -757,12 +763,13 @@ test_mismatches = None
 
 config_params = []
 
-adapt_steps = [50, 25, None]
-successive_steps = [25, 10]
-
+adapt_steps = [None]
+successive_steps = [1]
+stop_adapatation = [5, 10, 20, 50, 100]
 for a in adapt_steps:
     for s in successive_steps:
-        config_params.append({"adapt_steps": a, "successive_steps": s})
+        for sa in stop_adapatation:
+            config_params.append({"adapt_steps": a, "successive_steps": s, "stop_adaptation": sa})
 
 n_run = len(config_params)
 exp_dir = None
