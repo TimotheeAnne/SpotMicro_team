@@ -575,10 +575,10 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 20,
+    "iterations": 10,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
-    "online": True,
+    "online": False,
     "adapt_steps": None,
     "successive_steps": 50,
     "stop_adapatation_step": 10000,
@@ -610,8 +610,8 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
-    'training_tasks_index': [0, 4],
+    "data_dir": "data/spotmicro/15_04_2020_08_58_01_eval_mismatches",
+    'training_tasks_index': [0, 1],
     "model_name": "spotmicro_meta_embedding_model",
     "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
@@ -770,19 +770,16 @@ exp_dir = None
 mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
 test_mismatches = None
 
-# test_mismatches = [
-#     ([0, 150, 300], [{}, {'friction': 0.2}, {'friction': 0.2, 'wind_force': 2}])
-# ]
+test_mismatches = []
 
 config_params = []
 
-adapt_steps = [None]
-successive_steps = [1]
-stop_adapatation = [5, 10, 20, 50, 100, 200, 500]
+adapt_steps = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 for a in adapt_steps:
-    for s in successive_steps:
-        for sa in stop_adapatation:
-            config_params.append({"adapt_steps": a, "successive_steps": s, "stop_adaptation": sa})
+    for mismatch in [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]:
+        config_params.append({"adapt_steps": a})
+        test_mismatches.append(mismatch)
+
 
 n_run = len(config_params)
 exp_dir = None
