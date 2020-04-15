@@ -156,7 +156,7 @@ class Cost(object):
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
 
 
-def train_meta(tasks_in, tasks_out, config):
+def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[]):
     model = nn_model.Embedding_NN(dim_in=config["dim_in"],
                                   hidden=config["hidden_layers"],
                                   dim_out=config["dim_out"],
@@ -167,16 +167,18 @@ def train_meta(tasks_in, tasks_out, config):
                                   output_limit=config["output_limit"],
                                   dropout=0.0,
                                   hidden_activation=config["hidden_activation"])
-    task_losses, saved_embeddings = nn_model.train_meta(model,
+    task_losses, valid_losses, saved_embeddings = nn_model.train_meta(model,
                                       tasks_in,
                                       tasks_out,
+                                      valid_in=valid_in,
+                                      valid_out=valid_out,
                                       meta_iter=config["meta_iter"],
                                       inner_iter=config["inner_iter"],
                                       inner_step=config["inner_step"],
                                       meta_step=config["meta_step"],
                                       minibatch=config["meta_batch_size"],
                                       inner_sample_size=config["inner_sample_size"])
-    return model, task_losses, saved_embeddings
+    return model, task_losses, saved_embeddings, valid_losses
 
 
 def train_model(model, train_in, train_out, task_id, config):
@@ -311,7 +313,10 @@ def compute_likelihood(data, models, beta=1.0):
     for i, m in enumerate(models):
         y_pred = m.predict(x)
         lik[i] = np.exp(- beta * m.loss_function_numpy(y, y_pred) / len(x))
-    return lik / np.sum(lik)
+    if np.sum(lik) == 0:
+        return np.ones(len(models))/len(models)
+    else:
+        return lik / np.sum(lik)
 
 
 def sample_model_index(likelihoods):
@@ -382,6 +387,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     if not path.exists(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
+        valid_in, valid_out = [], []
         tasks_list = range(n_training_tasks) if config['training_tasks_index'] is None else config['training_tasks_index']
         for n in tasks_list:
             meta_data = np.load(config["data_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
@@ -389,10 +395,17 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             tasks_in.append(x)
             tasks_out.append(y)
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
-        meta_model, task_losses, saved_embeddings = train_meta(tasks_in, tasks_out, config)
+        if config['valid_dir'] is not None:
+            for n in tasks_list:
+                meta_data = np.load(config["valid_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
+                x, y, high, low = process_data(meta_data[0])
+                valid_in.append(x)
+                valid_out.append(y)
+        meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in, valid_out)
         os.mkdir(config["data_dir"] + "/meta_model")
         meta_model.save(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt")
         np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_task_losses.npy", task_losses)
+        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_valid_losses.npy", task_losses)
         np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
     else:
         print("Model found. Loading from '.pt' file...")
@@ -509,7 +522,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             data += trajectory
             '''-----------------Compute likelihood before relearning the models-------'''
             task_likelihoods = compute_likelihood(data, raw_models)
-            samples['likelyhood'].append(np.copy(task_likelihoods))
+            samples['likelihood'].append(np.copy(task_likelihoods))
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
             best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * 0.02)
@@ -590,7 +603,7 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
@@ -753,8 +766,8 @@ kwargs = env_args_from_config(config)
 
 exp_dir = None
 
+# mismatches = ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
 mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
-# mismatches = ([0], [{}])
 test_mismatches = None
 
 # test_mismatches = [
@@ -765,7 +778,7 @@ config_params = []
 
 adapt_steps = [None]
 successive_steps = [1]
-stop_adapatation = [5, 10, 20, 50, 100]
+stop_adapatation = [5, 10, 20, 50, 100, 200, 500]
 for a in adapt_steps:
     for s in successive_steps:
         for sa in stop_adapatation:
