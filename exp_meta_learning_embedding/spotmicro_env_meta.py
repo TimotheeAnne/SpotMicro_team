@@ -611,6 +611,7 @@ config = {
     # logging
     "result_dir": "results",
     "data_dir": "data/spotmicro/15_04_2020_08_58_01_eval_mismatches",
+    "valid_dir": None,
     'training_tasks_index': [0, 1],
     "model_name": "spotmicro_meta_embedding_model",
     "env_name": "meta_spotmicro_04",
