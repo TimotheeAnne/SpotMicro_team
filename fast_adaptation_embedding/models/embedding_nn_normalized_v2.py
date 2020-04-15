@@ -166,7 +166,8 @@ def load_model(file_path, device=torch.device('cpu')):
     return model
 
 
-def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_step=1e-3, meta_step=1e-3, minibatch=32,
+def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
+               meta_iter=1000, inner_iter=10, inner_step=1e-3, meta_step=1e-3, minibatch=32,
                inner_sample_size=None):
     """
     model: Instance of Embedding_NN,
@@ -201,12 +202,18 @@ def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_
     xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
     yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
 
+    valid_xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_in]
+    valid_yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_out]
+
     tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
     tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
 
+    valid_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in valid_xx]
+    valid_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in valid_yy]
+
     task_losses = np.zeros(len(tasks_in))
     Task_losses = [[] for _ in range(len(tasks_in))]
-
+    Valid_losses = [[] for _ in range(len(tasks_in))]
     saved_embeddings = torch.empty((int(meta_iter/len(tasks_in))+1, len(tasks_in), model.embedding_dim))
     saved_embeddings[0] = deepcopy(model.embeddings.weight)
     tbar = tqdm(range(meta_iter))
@@ -235,9 +242,17 @@ def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_
                 for param in model.parameters():
                     param.data -= inner_step * param.grad.data
                 final_loss.append(loss.item() / batch_size)
+        valid_x = valid_in_tensor[task_index]
+        valid_y = valid_out_tensor[task_index]
+        valid_loss = []
+        for i in range(0, valid_x.size(0) - batch_size + 1, batch_size):
+            pred = model.predict_tensor(valid_x[i:i + batch_size], tasks_tensor)
+            loss = model.loss_function(pred, valid_y[i:i + batch_size])
+            valid_loss.append(loss.item() / batch_size)
 
         task_losses[task_index] = np.mean(final_loss)
         Task_losses[task_index].append(np.mean(final_loss))
+        Valid_losses[task_index].append(np.mean(valid_loss))
         tbar.set_description(str(task_losses))
 
         model.train(mode=False)
@@ -248,7 +263,7 @@ def train_meta(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_
              weights_before})
         if (meta_count+1) % len(tasks_in) == 0:
             saved_embeddings[int((meta_count+1)/len(tasks_in))] = deepcopy(model.embeddings.weight)
-    return Task_losses, saved_embeddings.detach().cpu().numpy()
+    return Task_losses, Valid_losses, saved_embeddings.detach().cpu().numpy()
 
 
 def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, optimizer=None):
