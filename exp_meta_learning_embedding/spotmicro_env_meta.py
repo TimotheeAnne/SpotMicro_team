@@ -395,12 +395,15 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             tasks_in.append(x)
             tasks_out.append(y)
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
-        if config['valid_dir'] is not None:
-            for n in tasks_list:
+        for n in tasks_list:
+            if config['valid_dir'] is not None:
                 meta_data = np.load(config["valid_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
                 x, y, high, low = process_data(meta_data[0])
-                valid_in.append(x)
-                valid_out.append(y)
+            else:
+                x, y = [], []
+            valid_in.append(x)
+            valid_out.append(y)
+
         meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in, valid_out)
         os.mkdir(config["data_dir"] + "/meta_model")
         meta_model.save(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt")
