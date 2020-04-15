@@ -181,6 +181,7 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
     inner_sample_size: Inner loop sampling size. Samples the data and train on that data only per meta update.
     """
 
+    with_validation = (valid_in != [])
     all_data_in = []
     all_data_out = []
     for task_id in range(len(tasks_in)):
@@ -202,14 +203,14 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
     xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
     yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
 
-    valid_xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_in]
-    valid_yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_out]
-
     tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
     tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
 
-    valid_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in valid_xx]
-    valid_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in valid_yy]
+    if with_validation:
+        valid_xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_in]
+        valid_yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in valid_out]
+        valid_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in valid_xx]
+        valid_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in valid_yy]
 
     task_losses = np.zeros(len(tasks_in))
     Task_losses = [[] for _ in range(len(tasks_in))]
@@ -242,17 +243,19 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
                 for param in model.parameters():
                     param.data -= inner_step * param.grad.data
                 final_loss.append(loss.item() / batch_size)
-        valid_x = valid_in_tensor[task_index]
-        valid_y = valid_out_tensor[task_index]
-        valid_loss = []
-        for i in range(0, valid_x.size(0) - batch_size + 1, batch_size):
-            pred = model.predict_tensor(valid_x[i:i + batch_size], tasks_tensor)
-            loss = model.loss_function(pred, valid_y[i:i + batch_size])
-            valid_loss.append(loss.item() / batch_size)
+        if with_validation:
+            valid_x = valid_in_tensor[task_index]
+            valid_y = valid_out_tensor[task_index]
+            valid_loss = []
+            for i in range(0, valid_x.size(0) - batch_size + 1, batch_size):
+                pred = model.predict_tensor(valid_x[i:i + batch_size], tasks_tensor)
+                loss = model.loss_function(pred, valid_y[i:i + batch_size])
+                valid_loss.append(loss.item() / batch_size)
 
         task_losses[task_index] = np.mean(final_loss)
         Task_losses[task_index].append(np.mean(final_loss))
-        Valid_losses[task_index].append(np.mean(valid_loss))
+        if with_validation:
+            Valid_losses[task_index].append(np.mean(valid_loss))
         tbar.set_description(str(task_losses))
 
         model.train(mode=False)
