@@ -168,16 +168,16 @@ def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[]):
                                   dropout=0.0,
                                   hidden_activation=config["hidden_activation"])
     task_losses, valid_losses, saved_embeddings = nn_model.train_meta(model,
-                                      tasks_in,
-                                      tasks_out,
-                                      valid_in=valid_in,
-                                      valid_out=valid_out,
-                                      meta_iter=config["meta_iter"],
-                                      inner_iter=config["inner_iter"],
-                                      inner_step=config["inner_step"],
-                                      meta_step=config["meta_step"],
-                                      minibatch=config["meta_batch_size"],
-                                      inner_sample_size=config["inner_sample_size"])
+                                                                      tasks_in,
+                                                                      tasks_out,
+                                                                      valid_in=valid_in,
+                                                                      valid_out=valid_out,
+                                                                      meta_iter=config["meta_iter"],
+                                                                      inner_iter=config["inner_iter"],
+                                                                      inner_step=config["inner_step"],
+                                                                      meta_step=config["meta_step"],
+                                                                      minibatch=config["meta_batch_size"],
+                                                                      inner_sample_size=config["inner_sample_size"])
     return model, task_losses, saved_embeddings, valid_losses
 
 
@@ -292,7 +292,7 @@ def execute_online(env, steps, model, config, task_likelihoods, K, samples,
         samples['rewards'].append(info['rewards'])
         if done:
             break
-    return traject_cost, done, past
+    return traject_cost, done, past, current_state.copy()
 
 
 def extract_action_seq(data):
@@ -314,7 +314,7 @@ def compute_likelihood(data, models, beta=1.0):
         y_pred = m.predict(x)
         lik[i] = np.exp(- beta * m.loss_function_numpy(y, y_pred) / len(x))
     if np.sum(lik) == 0:
-        return np.ones(len(models))/len(models)
+        return np.ones(len(models)) / len(models)
     else:
         return lik / np.sum(lik)
 
@@ -388,12 +388,17 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
         valid_in, valid_out = [], []
-        tasks_list = range(n_training_tasks) if config['training_tasks_index'] is None else config['training_tasks_index']
+        tasks_list = range(n_training_tasks) if config['training_tasks_index'] is None else config[
+            'training_tasks_index']
         for n in tasks_list:
             meta_data = np.load(config["data_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
             x, y, high, low = process_data(meta_data[0])
             tasks_in.append(x)
             tasks_out.append(y)
+            # permutation = np.random.permutation(len(x))
+            # training, validation = permutation[int(len(permutation)/3):], permutation[:int(len(permutation)/3)]
+            # valid_in.append(x[validation])
+            # valid_out.append(y[validation])
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
         if config['valid_dir'] is not None:
             for n in tasks_list:
@@ -401,11 +406,12 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 x, y, high, low = process_data(meta_data[0])
                 valid_in.append(x)
                 valid_out.append(y)
-        meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in, valid_out)
+        meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in,
+                                                                             valid_out)
         os.mkdir(config["data_dir"] + "/meta_model")
         meta_model.save(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt")
         np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_task_losses.npy", task_losses)
-        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_valid_losses.npy", task_losses)
+        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_valid_losses.npy", valid_losses)
         np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
     else:
         print("Model found. Loading from '.pt' file...")
@@ -421,7 +427,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         m.fix_task(task_id)
 
     '''------------------------Test time------------------------------------'''
-    high, low = np.ones(config["dim_out"]) * 1000., -np.ones(config["dim_out"]) * 1000.
 
     traj_obs, traj_acs, traj_reward, traj_rewards, traj_likelihood = [], [], [], [], []
     best_reward, best_distance = -np.inf, 0
@@ -437,12 +442,15 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         task_likelihoods = np.random.rand(n_training_tasks)
 
         if config['online']:
-            if (index_iter+1) % config['video_recording_frequency'] == 0 or index_iter == config["iterations"] - 1:
+            if config['record_video'] and (
+                    (index_iter + 1) % config['video_recording_frequency'] == 0 or index_iter == config[
+                "iterations"] - 1):
                 recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(index_iter) + ".mp4")
             else:
                 recorder = None
             c = 0
-            init_mismatch = test_mismatch[1][0]
+            # init_mismatch = test_mismatch[1][0]
+            init_mismatch = {}
             env.set_mismatch(init_mismatch)
             current_state = env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
@@ -453,19 +461,19 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                     mismatch_index = test_mismatch[0].index(steps)
                     env.set_mismatch(test_mismatch[1][mismatch_index])
                 trajectory = []
-                c, done, past = execute_online(env=env,
-                                               steps=config['successive_steps'],
-                                               model=models,
-                                               config=config,
-                                               task_likelihoods=task_likelihoods,
-                                               samples=samples,
-                                               current_state=current_state,
-                                               recorder=recorder,
-                                               K=config['K'],
-                                               trajectory=trajectory,
-                                               traject_cost=c,
-                                               past=past
-                                               )
+                c, done, past, current_state = execute_online(env=env,
+                                                              steps=config['successive_steps'],
+                                                              model=models,
+                                                              config=config,
+                                                              task_likelihoods=task_likelihoods,
+                                                              samples=samples,
+                                                              current_state=current_state,
+                                                              recorder=recorder,
+                                                              K=config['K'],
+                                                              trajectory=trajectory,
+                                                              traject_cost=c,
+                                                              past=past
+                                                              )
                 if done:
                     break
                 data = trajectory
@@ -473,17 +481,18 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 if steps < config['stop_adapatation_step']:
                     task_likelihoods = compute_likelihood(data, raw_models)
                     samples['likelihood'].append(np.copy(task_likelihoods))
-                    x, y, high, low = process_data(data)
-                    task_index = sample_model_index(task_likelihoods) if config["sample_model"] else np.argmax(task_likelihoods)
-
+                    task_index = np.argmax(task_likelihoods)
                     task_likelihoods = task_likelihoods * 0
                     task_likelihoods[task_index] = 1.0
-                    data_size = config['adapt_steps']
-                    if data_size is None:
-                        data_size = len(x)
+                    if config['adapt_steps'] != 0:
+                        x, y, high, low = process_data(data)
+                        data_size = config['adapt_steps']
+                        if data_size is None:
+                            data_size = len(x)
 
-                    models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
-                                                     train_out=y[-data_size::], task_id=task_index, config=config)
+                        models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]),
+                                                         train_in=x[-data_size::],
+                                                         train_out=y[-data_size::], task_id=task_index, config=config)
 
             if recorder is not None:
                 recorder.close()
@@ -566,7 +575,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         all_action_seq.append(extract_action_seq(trajectory))
         all_costs.append(c)
 
-        np.save(res_dir + "/trajectories_" + str(index) + ".npy", data)
+        # np.save(res_dir + "/trajectories_" + str(index) + ".npy", data)
 
 
 #######################################################################################################
@@ -575,10 +584,10 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 10,
+    "iterations": 20,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
-    "online": False,
+    "online": True,
     "adapt_steps": None,
     "successive_steps": 50,
     "stop_adapatation_step": 10000,
@@ -603,7 +612,7 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 1,
+    "record_video": 0,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
@@ -775,12 +784,15 @@ test_mismatches = []
 
 config_params = []
 
-adapt_steps = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
+adapt_steps = [None, 100, 50, 25, 5, 0]
+successuve_steps = [1, 5, 10, 20, 50, 100, 200, 500]
 for a in adapt_steps:
-    for mismatch in [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]:
-        config_params.append({"adapt_steps": a})
-        test_mismatches.append(mismatch)
-
+    for s in successuve_steps:
+        for mismatch in [([0], [{}]),
+                         ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+                         ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])]:
+            config_params.append({"adapt_steps": a, 'successive_steps': s})
+            test_mismatches.append(mismatch)
 
 n_run = len(config_params)
 exp_dir = None
@@ -789,12 +801,12 @@ for index in range(n_run):
     conf = copy.copy(config)
     conf['exp_dir'] = exp_dir
     conf = apply_config_params(conf, config_params[index])
-    print('run ', index+1, " on ", n_run)
+    print('run ', index + 1, " on ", n_run)
     print("Params: ", config_params[index])
     check_config(conf)
     kwargs = env_args_from_config(conf)
     current_mismatches = mismatches if test_mismatches is None else test_mismatches[index]
-    main(gym_args=args, gym_kwargs=kwargs, test_mismatch=current_mismatches,  index=index, config=conf)
+    main(gym_args=args, gym_kwargs=kwargs, test_mismatch=current_mismatches, index=index, config=conf)
     exp_dir = conf['exp_dir']
 
     if index == 0:
