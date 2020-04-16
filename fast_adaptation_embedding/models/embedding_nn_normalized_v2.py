@@ -243,20 +243,20 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
                 for param in model.parameters():
                     param.data -= inner_step * param.grad.data
                 final_loss.append(loss.item() / batch_size)
-        if with_validation:
+        if meta_count % 100 <= 1 and with_validation:
             valid_x = valid_in_tensor[task_index]
             valid_y = valid_out_tensor[task_index]
             valid_loss = []
             for i in range(0, valid_x.size(0) - batch_size + 1, batch_size):
-                pred = model.predict_tensor(valid_x[i:i + batch_size], tasks_tensor)
+                pred = model(valid_x[i:i + batch_size], tasks_tensor).detach()
                 loss = model.loss_function(pred, valid_y[i:i + batch_size])
                 valid_loss.append(loss.item() / batch_size)
+            Valid_losses[task_index].append(np.mean(valid_loss))
 
         task_losses[task_index] = np.mean(final_loss)
         Task_losses[task_index].append(np.mean(final_loss))
-        if with_validation:
-            Valid_losses[task_index].append(np.mean(valid_loss))
-        tbar.set_description(str(task_losses))
+
+        tbar.set_description("training " + str(task_losses) + "- validation " + str([Valid_losses[0][-1], Valid_losses[1][-1]]) if meta_count>0 else [])
 
         model.train(mode=False)
         weights_after = model.state_dict()
