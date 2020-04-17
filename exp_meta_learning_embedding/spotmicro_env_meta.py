@@ -586,7 +586,7 @@ config = {
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 20,
     # "random_episodes": 1,  # per task
-    "episode_length": 500,  # number of times the controller is updated
+    "episode_length": 1000,  # number of times the controller is updated
     "online": True,
     "adapt_steps": None,
     "successive_steps": 50,
@@ -612,16 +612,16 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/15_04_2020_08_58_01_eval_mismatches",
+    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
     "valid_dir": None,
-    'training_tasks_index': [0, 1],
+    'training_tasks_index': None,
     "model_name": "spotmicro_meta_embedding_model",
     "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
@@ -784,13 +784,11 @@ test_mismatches = []
 
 config_params = []
 
-adapt_steps = [None, 100, 50, 25, 5, 0]
-successuve_steps = [1, 5, 10, 20, 50, 100, 200, 500]
+adapt_steps = [10, 20, 50, 100]
+successive_steps = [1, 5, 10]
 for a in adapt_steps:
-    for s in successuve_steps:
-        for mismatch in [([0], [{}]),
-                         ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-                         ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])]:
+    for s in successive_steps:
+        for mismatch in [([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}, {'friction': [0]}, {'wind_force': 2}])]:
             config_params.append({"adapt_steps": a, 'successive_steps': s})
             test_mismatches.append(mismatch)
 
