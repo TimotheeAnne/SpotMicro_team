@@ -256,7 +256,7 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
         task_losses[task_index] = np.mean(final_loss)
         Task_losses[task_index].append(np.mean(final_loss))
 
-        tbar.set_description("training " + str(task_losses) + "- validation " + str([Valid_losses[0][-1], Valid_losses[1][-1]]) if meta_count>0 else [])
+        tbar.set_description("training " + str(task_losses))
 
         model.train(mode=False)
         weights_after = model.state_dict()
