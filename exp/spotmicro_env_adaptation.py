@@ -789,7 +789,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 20,
+    "test_iterations": 1,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -817,7 +817,7 @@ config = {
 
     # logging
     "record_video": 1,
-    "video_recording_frequency": 25,
+    "video_recording_frequency": 50,
     "result_dir": "results",
     "env_name": "spot_micro_04",
     "exp_suffix": "experiment",
@@ -912,10 +912,7 @@ mismatches = [
 ]
 
 test_mismatches = None
-test_mismatches = [
-    ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
-]
+test_mismatches = ([0, 250, 500], [{}, {'friction': 0.2}, {"friction": 0.2, 'faulty_motors': [4], 'faulty_joints': [0]}])
 
 config['test_mismatches'] = test_mismatches
 
@@ -930,20 +927,26 @@ config_params = []
 # path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
 # directory = '07_04_2020_11_10_01_test_mismatches_copy'
 #
-# for i in range(len(test_mismatches)):
-#     config_params.append({
-#         'pretrained_model': path + config['env_name'] + "/" + directory + "/run_"+str(i),
-#         'test_mismatches': [test_mismatches[i]]})
+# runs = ["1"]
+# for i in range(len(runs)):
+#     for mismatch in [
+#         ([0, 250], [{}, {'friction': 0.2}]),
+#     ]:
+#         config_params.append({
+#             'pretrained_model': path + config['env_name'] + "/" + directory + "/run_"+runs[i],
+#             'test_mismatches': [mismatch]})
 
 
 test_mismatches = [
-    {},
-    {'faulty_motors': [4], 'faulty_joints': [0]},
+    {'faulty_motors': [1], 'faulty_joints': [0]},
+    {'faulty_motors': [2], 'faulty_joints': [-1]},
+    {'faulty_motors': [7], 'faulty_joints': [0]},
+    {'faulty_motors': [8], 'faulty_joints': [-1]},
 ]
 
 run_mismatches = []
 for i in range(len(test_mismatches)):
-    config_params.append({'test_mismatches': [test_mismatches]})
+    config_params.append({'test_mismatches': []})
     run_mismatches.append([test_mismatches[i]])
 
 
