@@ -10,6 +10,7 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import argparse
 from tqdm import trange
 import os, inspect
+import json
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -409,6 +410,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
         np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_valid_losses.npy", valid_losses)
         np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
+        with open(config["data_dir"] + "/"+config['meta_model_name'] + '/config.json', 'w') as fp:
+            json.dump(config, fp)
     else:
         print("Model found. Loading from '.pt' file...")
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
