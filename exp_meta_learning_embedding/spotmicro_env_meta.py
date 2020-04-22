@@ -405,7 +405,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 valid_out.append(y)
         meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in,
                                                                              valid_out)
-        os.mkdir(config["data_dir"] + "/meta_model")
+        os.mkdir(config["data_dir"] + "/"+config['meta_model_name'])
         meta_model.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt")
         np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
         np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_valid_losses.npy", valid_losses)
@@ -793,7 +793,7 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [20]
+adapt_steps = [10, 20, 50, 100]
 embedding_sizes = [1, 2, 5, 10]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
