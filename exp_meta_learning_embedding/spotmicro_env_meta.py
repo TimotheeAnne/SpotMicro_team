@@ -384,7 +384,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         f.write("mismatches" + str(test_mismatch) + "\n")
 
     '''--------------------Meta learn the models---------------------------'''
-    if not path.exists(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt"):
+    if not path.exists(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
         valid_in, valid_out = [], []
@@ -395,10 +395,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             x, y, high, low = process_data(meta_data[0])
             tasks_in.append(x)
             tasks_out.append(y)
-            # permutation = np.random.permutation(len(x))
-            # training, validation = permutation[int(len(permutation)/3):], permutation[:int(len(permutation)/3)]
-            # valid_in.append(x[validation])
-            # valid_out.append(y[validation])
             print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
         if config['valid_dir'] is not None:
             for n in tasks_list:
@@ -409,14 +405,14 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in,
                                                                              valid_out)
         os.mkdir(config["data_dir"] + "/meta_model")
-        meta_model.save(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt")
-        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_task_losses.npy", task_losses)
-        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_valid_losses.npy", valid_losses)
-        np.save(config["data_dir"] + "/meta_model/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
+        meta_model.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt")
+        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
+        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_valid_losses.npy", valid_losses)
+        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
     else:
         print("Model found. Loading from '.pt' file...")
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-        meta_model = nn_model.load_model(config["data_dir"] + "/meta_model/" + config["model_name"] + ".pt", device)
+        meta_model = nn_model.load_model(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt", device)
 
     raw_models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
     models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
@@ -584,9 +580,9 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 20,
+    "iterations": 10,
     # "random_episodes": 1,  # per task
-    "episode_length": 1000,  # number of times the controller is updated
+    "episode_length": 500,  # number of times the controller is updated
     "online": True,
     "adapt_steps": None,
     "successive_steps": 50,
@@ -619,10 +615,11 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy",
+    "data_dir": "data/spotmicro/motor_damaged",
     "valid_dir": None,
-    'training_tasks_index': None,
+    'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7],
     "model_name": "spotmicro_meta_embedding_model",
+    "meta_model_name": "meta_model",
     "env_name": "meta_spotmicro_04",
     "exp_suffix": "experiment",
     "exp_dir": None,
@@ -633,7 +630,7 @@ config = {
     "dim_in": 33 + 12,
     "dim_out": 33,
     "hidden_layers": [256, 256],
-    "embedding_size": 2,
+    "embedding_size": 5,
     "cuda": True,
     "output_limit": 10.0,
     "ensemble_batch_size": 16384,
@@ -777,20 +774,30 @@ kwargs = env_args_from_config(config)
 exp_dir = None
 
 # mismatches = ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}])
-mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
+# mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
 test_mismatches = None
 
+mismatches = [
+    ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [2], 'faulty_joints': [-1]}]),
+    ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    ([0, 250], [{}, {'faulty_motors': [7], 'faulty_joints': [0.45]}]),
+    ([0, 250], [{}, {'faulty_motors': [8], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [0.5]}]),
+    ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
+]
 test_mismatches = []
-
 config_params = []
 
-adapt_steps = [10, 20, 50, 100]
-successive_steps = [1, 5, 10]
+adapt_steps = [20]
+embedding_sizes = [1, 2, 5, 10]
 for a in adapt_steps:
-    for s in successive_steps:
-        for mismatch in [([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}, {'friction': [0]}, {'wind_force': 2}])]:
-            config_params.append({"adapt_steps": a, 'successive_steps': s})
-            test_mismatches.append(mismatch)
+    for embedding_size in embedding_sizes:
+        for i in range(len(mismatches)):
+            config_params.append({"adapt_steps": a, 'successive_steps': 1, "embedding_size": embedding_size,
+                                  "meta_model_name": "damaged_without_RLC_embedding_size_"+str(embedding_size)})
+            test_mismatches.append(mismatches[i])
 
 n_run = len(config_params)
 exp_dir = None
