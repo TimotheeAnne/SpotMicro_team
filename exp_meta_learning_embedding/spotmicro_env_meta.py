@@ -396,7 +396,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             x, y, high, low = process_data(meta_data[0])
             tasks_in.append(x)
             tasks_out.append(y)
-            print("task ", n, " data: ", len(tasks_in[n]), len(tasks_out[n]))
+            print("task ", n, " data: ", len(tasks_in[-1]), len(tasks_out[-1]))
         if config['valid_dir'] is not None:
             for n in tasks_list:
                 meta_data = np.load(config["valid_dir"] + "/run_" + str(n) + "/trajectories.npy", allow_pickle=True)
