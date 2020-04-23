@@ -618,9 +618,9 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/motor_damaged",
+    "data_dir": "data/spotmicro/motor_damaged (copy)",
     "valid_dir": None,
-    'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7],
+    'training_tasks_index': [0, 1, 2, 4, 5, 6, 7, 8],
     "model_name": "spotmicro_meta_embedding_model",
     "meta_model_name": "meta_model",
     "env_name": "meta_spotmicro_04",
@@ -781,26 +781,28 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
-    ([0, 250], [{}, {'faulty_motors': [2], 'faulty_joints': [-1]}]),
+    # ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
+    # ([0, 250], [{}, {'faulty_motors': [2], 'faulty_joints': [-1]}]),
     ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
-    ([0, 250], [{}, {'faulty_motors': [7], 'faulty_joints': [0.45]}]),
-    ([0, 250], [{}, {'faulty_motors': [8], 'faulty_joints': [0]}]),
-    ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [0.5]}]),
-    ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
+    # ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    # ([0, 250], [{}, {'faulty_motors': [7], 'faulty_joints': [0.45]}]),
+    # ([0, 250], [{}, {'faulty_motors': [8], 'faulty_joints': [0]}]),
+    # ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [0.5]}]),
+    # ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
 ]
 test_mismatches = []
 config_params = []
 
-adapt_steps = [10, 20, 50, 100]
+adapt_steps = [10, 20, 50, 100, 200]
 embedding_sizes = [1, 2, 5, 10]
+epochs = [10, 20, 50, 100]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
-        for i in range(len(mismatches)):
-            config_params.append({"adapt_steps": a, 'successive_steps': 1, "embedding_size": embedding_size,
-                                  "meta_model_name": "damaged_without_RLC_embedding_size_"+str(embedding_size)})
-            test_mismatches.append(mismatches[i])
+        for epoch in epochs:
+            for i in range(len(mismatches)):
+                config_params.append({"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
+                                      "meta_model_name": "damaged_without_FLT_embedding_size_"+str(embedding_size)})
+                test_mismatches.append(mismatches[i])
 
 n_run = len(config_params)
 exp_dir = None
