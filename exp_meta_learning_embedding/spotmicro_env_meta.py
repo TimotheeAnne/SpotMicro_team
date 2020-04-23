@@ -618,7 +618,7 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/motor_damaged (copy)",
+    "data_dir": "data/spotmicro/motor_damaged",
     "valid_dir": None,
     'training_tasks_index': [0, 1, 2, 4, 5, 6, 7, 8],
     "model_name": "spotmicro_meta_embedding_model",
