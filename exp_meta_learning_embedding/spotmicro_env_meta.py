@@ -781,21 +781,21 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    # ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
     # ([0, 250], [{}, {'faulty_motors': [2], 'faulty_joints': [-1]}]),
     ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
     # ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
     # ([0, 250], [{}, {'faulty_motors': [7], 'faulty_joints': [0.45]}]),
     # ([0, 250], [{}, {'faulty_motors': [8], 'faulty_joints': [0]}]),
     # ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [0.5]}]),
-    # ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
+    ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
 ]
 test_mismatches = []
 config_params = []
 
 adapt_steps = [10, 20, 50, 100, 200]
 embedding_sizes = [1, 2, 5, 10]
-epochs = [10, 20, 50, 100]
+epochs = [1, 2, 5, 10, 20, 50]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
