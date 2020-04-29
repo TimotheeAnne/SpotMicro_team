@@ -442,8 +442,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
         if config['online']:
             if config['record_video'] and (
-                    (index_iter + 1) % config['video_recording_frequency'] == 0 or index_iter == config[
-                "iterations"] - 1):
+                    (index_iter + 1) % config['video_recording_frequency'] == 0 or index_iter == config["iterations"] - 1):
                 recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(index_iter) + ".mp4")
             else:
                 recorder = None
@@ -459,6 +458,9 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 if steps in test_mismatch[0]:
                     mismatch_index = test_mismatch[0].index(steps)
                     env.set_mismatch(test_mismatch[1][mismatch_index])
+                    if len(test_mismatch) > 2:
+                        task_likelihoods = np.zeros(n_training_tasks)
+                        task_likelihoods[test_mismatch[2][mismatch_index]] = 1
                 trajectory = []
                 c, done, past, current_state = execute_online(env=env,
                                                               steps=config['successive_steps'],
@@ -478,7 +480,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 data = trajectory
                 '''-----------------Compute likelihood before relearning the models-------'''
                 if steps < config['stop_adapatation_step']:
-                    task_likelihoods = compute_likelihood(data, raw_models)
+                    if len(test_mismatch) < 2:
+                        task_likelihoods = compute_likelihood(data, raw_models)
                     samples['likelihood'].append(np.copy(task_likelihoods))
                     task_index = np.argmax(task_likelihoods)
                     task_likelihoods = task_likelihoods * 0
@@ -618,9 +621,9 @@ config = {
 
     # logging
     "result_dir": "results",
-    "data_dir": "data/spotmicro/motor_damaged",
+    "data_dir": "data/spotmicro/4_motor_damaged_0",
     "valid_dir": None,
-    'training_tasks_index': [0, 1, 2, 4, 5, 6, 7, 8],
+    'training_tasks_index': [0, 1, 2, 3, 4],
     "model_name": "spotmicro_meta_embedding_model",
     "meta_model_name": "meta_model",
     "env_name": "meta_spotmicro_04",
@@ -781,28 +784,28 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0, 250], [{}, {'faulty_motors': [1], 'faulty_joints': [0]}]),
-    # ([0, 250], [{}, {'faulty_motors': [2], 'faulty_joints': [-1]}]),
     ([0, 250], [{}, {'faulty_motors': [4], 'faulty_joints': [0]}]),
-    # ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
-    # ([0, 250], [{}, {'faulty_motors': [7], 'faulty_joints': [0.45]}]),
-    # ([0, 250], [{}, {'faulty_motors': [8], 'faulty_joints': [0]}]),
-    # ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [0.5]}]),
+    ([0, 250], [{}, {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    ([0, 250], [{}, {'faulty_motors': [10], 'faulty_joints': [1]}]),
     ([0, 250], [{}, {'faulty_motors': [11], 'faulty_joints': [0]}]),
 ]
 test_mismatches = []
 config_params = []
 
-adapt_steps = [10, 20, 50, 100, 200]
-embedding_sizes = [1, 2, 5, 10]
-epochs = [1, 2, 5, 10, 20, 50]
+adapt_steps = [50, 200, None]
+embedding_sizes = [2, 10]
+epochs = [20, 200]
+data_dirs = ['0', '1', '2', '3', '4']
+
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
             for i in range(len(mismatches)):
-                config_params.append({"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                                      "meta_model_name": "damaged_without_FLT_embedding_size_"+str(embedding_size)})
-                test_mismatches.append(mismatches[i])
+                for data_dir in data_dirs:
+                    config_params.append({"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
+                                          "meta_model_name": "damaged_emb_size_"+str(embedding_size)+"_dir_"+data_dir,
+                                          "data_dir": "data/spotmicro/4_motor_damaged_"+data_dir})
+                    test_mismatches.append(mismatches[i])
 
 n_run = len(config_params)
 exp_dir = None
