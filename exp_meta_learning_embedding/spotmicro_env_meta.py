@@ -631,7 +631,7 @@ config = {
     'training_tasks_index': [0, 1, 2, 3, 4],
     "model_name": "spotmicro_meta_embedding_model",
     "meta_model_name": "meta_model",
-    "env_name": "meta_spotmicro_04",
+    "env_name": "meta_spotmicro_05",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "Default experiment.",
