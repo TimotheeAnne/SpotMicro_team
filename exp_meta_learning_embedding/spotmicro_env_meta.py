@@ -788,12 +788,19 @@ exp_dir = None
 # mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
 test_mismatches = None
 
+# mismatches = [
+#     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+#     ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
+#     ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
+#     ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
+# ]
 mismatches = [
-    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
-    ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
+    {'faulty_motors': [4], 'faulty_joints': [0]},
+    {'faulty_motors': [5], 'faulty_joints': [-1]},
+    {'faulty_motors': [10], 'faulty_joints': [1]},
+    {'faulty_motors': [11], 'faulty_joints': [0]},
 ]
+
 test_mismatches = []
 config_params = []
 
@@ -806,7 +813,7 @@ for i in range(len(mismatches)):
     for data_dir in data_dirs:
         config_params.append({"adapt_steps": None, 'successive_steps': 1, "epoch": 20, "embedding_size": 4,
                               'training_tasks_index': training_tasks_index[i], 'online': False,
-                              "meta_model_name": "damaged_emb_size_4_dir_" + data_dir + "_without_"+str(i+1),
+                              "meta_model_name": "damaged_emb_size_4_dir_" + data_dir + "_without_" + str(i + 1),
                               "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
         test_mismatches.append(mismatches[i])
 
