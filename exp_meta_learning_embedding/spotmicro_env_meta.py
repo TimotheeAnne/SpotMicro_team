@@ -800,10 +800,10 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [None]
-embedding_sizes = [10]
-epochs = [200]
-data_dirs = ['0']
+adapt_steps = [None, 200, 50]
+embedding_sizes = [2, 10]
+epochs = [20, 200]
+data_dirs = ['0', '1', '2', '3', '4']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
