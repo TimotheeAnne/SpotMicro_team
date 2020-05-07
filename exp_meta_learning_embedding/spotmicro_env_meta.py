@@ -797,10 +797,7 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1.3]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [0.7]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1.15]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [0.85]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
 ]
 # mismatches = [
 #     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
@@ -814,7 +811,7 @@ config_params = []
 
 adapt_steps = [None, 200, 50]
 embedding_sizes = [2, 10]
-epochs = [20]
+epochs = [20, 200]
 data_dirs = ['0', '1', '2', '3', '4']
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
