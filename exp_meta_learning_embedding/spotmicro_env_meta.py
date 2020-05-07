@@ -385,7 +385,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
         f.write("mismatches" + str(test_mismatch) + "\n")
 
     '''--------------------Meta learn the models---------------------------'''
-    if not path.exists(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt"):
+    if not path.exists(config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + ".pt"):
         print("Model not found. Learning from data...")
         tasks_in, tasks_out = [], []
         valid_in, valid_out = [], []
@@ -405,17 +405,21 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 valid_out.append(y)
         meta_model, task_losses, saved_embeddings, valid_losses = train_meta(tasks_in, tasks_out, config, valid_in,
                                                                              valid_out)
-        os.mkdir(config["data_dir"] + "/"+config['meta_model_name'])
-        meta_model.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt")
-        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_task_losses.npy", task_losses)
-        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_valid_losses.npy", valid_losses)
-        np.save(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + "_embeddings.npy", saved_embeddings)
-        with open(config["data_dir"] + "/"+config['meta_model_name'] + '/config.json', 'w') as fp:
+        os.mkdir(config["data_dir"] + "/" + config['meta_model_name'])
+        meta_model.save(config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + ".pt")
+        np.save(config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + "_task_losses.npy",
+                task_losses)
+        np.save(config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + "_valid_losses.npy",
+                valid_losses)
+        np.save(config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + "_embeddings.npy",
+                saved_embeddings)
+        with open(config["data_dir"] + "/" + config['meta_model_name'] + '/config.json', 'w') as fp:
             json.dump(config, fp)
     else:
         print("Model found. Loading from '.pt' file...")
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-        meta_model = nn_model.load_model(config["data_dir"] + "/"+config['meta_model_name'] + "/" + config["model_name"] + ".pt", device)
+        meta_model = nn_model.load_model(
+            config["data_dir"] + "/" + config['meta_model_name'] + "/" + config["model_name"] + ".pt", device)
 
     raw_models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
     models = [copy.deepcopy(meta_model) for _ in range(n_training_tasks)]
@@ -425,6 +429,9 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     for task_id, m in enumerate(models):
         m.fix_task(task_id)
 
+    """ load testing data """
+    if config['testing_data'] is not None:
+            data = list(np.load(config["data_dir"] + "/run_" + config['testing_data'] + "/trajectories.npy", allow_pickle=True)[0])
     '''------------------------Test time------------------------------------'''
 
     traj_obs, traj_acs, traj_reward, traj_rewards, traj_likelihood = [], [], [], [], []
@@ -442,7 +449,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
         if config['online']:
             if config['record_video'] and (
-                    (index_iter + 1) % config['video_recording_frequency'] == 0 or index_iter == config["iterations"] - 1):
+                    (index_iter + 1) % config['video_recording_frequency'] == 0 or index_iter == config[
+                "iterations"] - 1):
                 recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(index_iter) + ".mp4")
             else:
                 recorder = None
@@ -551,9 +559,12 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             data_size = config['adapt_steps']
             if data_size is None:
                 data_size = len(x)
-
-            models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
-                                             train_out=y[-data_size::], task_id=task_index, config=config)
+            if config['start_from_raw']:
+                models[task_index] = train_model(model=copy.deepcopy(raw_models[task_index]), train_in=x[-data_size::],
+                                                 train_out=y[-data_size::], task_id=task_index, config=config)
+            else:
+                models[task_index] = train_model(model=copy.deepcopy(models[task_index]), train_in=x[-data_size::],
+                                                 train_out=y[-data_size::], task_id=task_index, config=config)
 
             traj_obs.extend(samples["obs"])
             traj_acs.extend(samples["acs"])
@@ -586,7 +597,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 10,
+    "iterations": 5,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -624,6 +635,7 @@ config = {
     "data_dir": "data/spotmicro/4_motor_damaged_0",
     "valid_dir": None,
     'training_tasks_index': [0, 1, 2, 3, 4],
+    'testing_data': None,
     "model_name": "spotmicro_meta_embedding_model",
     "meta_model_name": "meta_model",
     "env_name": "meta_spotmicro_05",
@@ -648,6 +660,7 @@ config = {
     "inner_step": 0.0001,
     "meta_batch_size": 32,
     "inner_sample_size": 500,
+    "start_from_raw": True,
 
     # Model learning parameters
     "epoch": 20,
@@ -784,35 +797,35 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
-    ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [1.3]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [0.7]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [1.15]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [0.85]}]),
 ]
-
 # mismatches = [
-#     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}], [1]),
-#     ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}], [2]),
-#     ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}], [3]),
-#     ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}], [4]),
+#     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+#     ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
+#     ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
+#     ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
 # ]
 
 test_mismatches = []
 config_params = []
 
-adapt_steps = [None, 200, 50]
-embedding_sizes = [2, 10]
-epochs = [20, 200]
+adapt_steps = [None]
+embedding_sizes = [2]
+epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
-
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
             for i in range(len(mismatches)):
                 for data_dir in data_dirs:
-                    config_params.append({"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                                          "meta_model_name": "damaged_emb_size_"+str(embedding_size)+"_dir_"+data_dir,
-                                          "data_dir": "data/spotmicro/4_motor_damaged_"+data_dir})
+                    config_params.append(
+                        {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
+                         "meta_model_name": "damaged_emb_size_" + str(embedding_size) + "_dir_" + data_dir + "_without_3",
+                         'training_tasks_index': [0, 1, 2, 4], 'online': True,
+                         "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
                     test_mismatches.append(mismatches[i])
 
 n_run = len(config_params)
