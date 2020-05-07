@@ -813,7 +813,7 @@ test_mismatches = []
 config_params = []
 
 adapt_steps = [None]
-embedding_sizes = [2]
+embedding_sizes = [2, 10]
 epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
 for a in adapt_steps:
