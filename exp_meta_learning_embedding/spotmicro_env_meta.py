@@ -812,7 +812,7 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [None]
+adapt_steps = [None, 200, 50]
 embedding_sizes = [2, 10]
 epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
