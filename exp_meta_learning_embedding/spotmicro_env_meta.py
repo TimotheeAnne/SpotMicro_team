@@ -797,8 +797,8 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+    {'faulty_motors': [4], 'faulty_joints': [0]},
+    {'faulty_motors': [4], 'faulty_joints': [0]},
 ]
 # mismatches = [
 #     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
