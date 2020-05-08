@@ -597,7 +597,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 5,
+    "iterations": 300,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -797,7 +797,8 @@ exp_dir = None
 test_mismatches = None
 
 mismatches = [
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
+    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
 ]
 # mismatches = [
 #     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
@@ -809,9 +810,9 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [None, 200, 50]
+adapt_steps = [None]
 embedding_sizes = [2, 10]
-epochs = [20, 200]
+epochs = [5]
 data_dirs = ['0', '1', '2', '3', '4']
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -820,8 +821,8 @@ for a in adapt_steps:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "damaged_emb_size_" + str(embedding_size) + "_dir_" + data_dir + "_without_3",
-                         'training_tasks_index': [0, 1, 2, 4], 'online': True,
+                         "meta_model_name": "damaged_emb_size_" + str(embedding_size) + "_dir_" + data_dir + "_without_1",
+                         'training_tasks_index': [0, 2, 3, 4], 'online': False, 'start_from_raw': i,
                          "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
                     test_mismatches.append(mismatches[i])
 
