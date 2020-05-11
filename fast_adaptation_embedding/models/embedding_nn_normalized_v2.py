@@ -29,7 +29,8 @@ class Embedding_NN(nn.Module):
 
         self.activation = nn.ReLU() if hidden_activation == "relu" else nn.Tanh()
         self.Layers = nn.ModuleList()
-        self.embeddings = nn.Embedding(self.num_tasks, self.embedding_dim)
+        if self.embedding_dim > 0:
+            self.embeddings = nn.Embedding(self.num_tasks, self.embedding_dim)
         self.Layers.append(nn.Linear(dim_in + self.embedding_dim, hidden[0]))
         for i in range(0, len(hidden) - 1):
             self.Layers.append(nn.Linear(hidden[i], hidden[i + 1]))
@@ -56,9 +57,12 @@ class Embedding_NN(nn.Module):
 
     def forward(self, x, task_ids=None):
         outputs = []
-        embed = self.embeddings(task_ids).reshape(-1, self.embedding_dim)
-        x_embed = torch.cat((x, embed), 1)
-        outputs.append(self.activation(self.Layers[0](x_embed)))
+        if self.embedding_dim > 0:
+            embed = self.embeddings(task_ids).reshape(-1, self.embedding_dim)
+            x_embed = torch.cat((x, embed), 1)
+            outputs.append(self.activation(self.Layers[0](x_embed)))
+        else:
+            outputs.append(self.activation(self.Layers[0](x)))
 
         if self.training:
             for i in range(1, len(self.hidden)):
@@ -124,6 +128,7 @@ class Embedding_NN(nn.Module):
             self._fixed_task_id = task_id
 
     def get_embedding(self, task_ids):
+        assert self.embedding_dim > 0, "Error No embedding"
         task_ids_tensor = torch.LongTensor(task_ids).cuda() if model.cuda_enabled else torch.LongTensor(task_ids)
         return self.embeddings(task_ids_tensor).reshape(-1, self.embedding_dim).detach().cpu().numpy()
 
@@ -215,8 +220,9 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
     task_losses = np.zeros(len(tasks_in))
     Task_losses = [[] for _ in range(len(tasks_in))]
     Valid_losses = [[] for _ in range(len(tasks_in))]
-    saved_embeddings = torch.empty((int(meta_iter/len(tasks_in))+1, len(tasks_in), model.embedding_dim))
-    saved_embeddings[0] = deepcopy(model.embeddings.weight)
+    if model.embedding_dim > 0:
+        saved_embeddings = torch.empty((int(meta_iter / len(tasks_in)) + 1, len(tasks_in), model.embedding_dim))
+        saved_embeddings[0] = deepcopy(model.embeddings.weight)
     tbar = tqdm(range(meta_iter))
     for meta_count in tbar:
         weights_before = deepcopy(model.state_dict())
@@ -264,9 +270,12 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
         model.load_state_dict(
             {name: weights_before[name] + (weights_after[name] - weights_before[name]) * stepsize for name in
              weights_before})
-        if (meta_count+1) % len(tasks_in) == 0:
+        if model.embedding_dim > 0 and (meta_count+1) % len(tasks_in) == 0:
             saved_embeddings[int((meta_count+1)/len(tasks_in))] = deepcopy(model.embeddings.weight)
-    return Task_losses, Valid_losses, saved_embeddings.detach().cpu().numpy()
+    if model.embedding_dim > 0:
+        return Task_losses, Valid_losses, saved_embeddings.detach().cpu().numpy()
+    else:
+        return Task_losses, Valid_losses, None
 
 
 def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, optimizer=None):
