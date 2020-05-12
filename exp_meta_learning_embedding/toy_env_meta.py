@@ -108,7 +108,13 @@ for (f, phi) in config['env_param']:
     train_out.append(func(x))
 
 trained_model, _, _, _ = train_meta(train_in, train_out, config)
-test_out = trained_model.predict_tensor(torch_base_in).cpu().detach().numpy()
+
+
+test_out = []
+models = [copy.deepcopy(trained_model) for _ in range(len(config['env_param']))]
+for task_id, m in enumerate(models):
+    m.fix_task(task_id)
+    test_out.append(m.predict_tensor(torch_base_in).cpu().detach().numpy())
 
 """ Meta-adaptation """
 adapt_out = []
@@ -117,15 +123,16 @@ for i, (f, phi) in enumerate(config['env_param']):
     x = np.random.uniform(0, 2*pi, (config['adapt_size'], 1))
     y = func(x)
     task_index = i
-    adapted_model = train_model(model=copy.deepcopy(trained_model), train_in=x, train_out=y, task_id=task_index, config=config)
+    adapted_model = train_model(model=models[i], train_in=x, train_out=y, task_id=task_index, config=config)
     adapt_out.append(adapted_model.predict_tensor(torch_base_in).cpu().detach().numpy())
 
 """ Plot """
-plt.plot(base_in, test_out, ls="-", label="before adaptation")
+
 for i, base_out in enumerate(base_outs):
     plt.plot(base_in, base_out, colors[i], label="base "+str(i), lw=3)
     plt.scatter(train_in[i], train_out[i], marker="o", s=100, c=colors[i], label="training")
-    plt.plot(base_in, adapt_out[i], ls=":", lw=3, c=colors[i], label="after adaptation")
+    plt.plot(base_in, adapt_out[i], ls="--", lw=3, c=colors[i], label="after adaptation")
+    plt.plot(base_in, test_out[i], ls=":", c=colors[i], label="before adaptation")
 
 plt.legend()
 plt.show()
