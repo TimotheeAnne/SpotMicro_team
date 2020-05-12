@@ -811,7 +811,7 @@ test_mismatches = []
 config_params = []
 
 adapt_steps = [None]
-embedding_sizes = [2, 10]
+embedding_sizes = [0]
 epochs = [5]
 data_dirs = ['0', '1', '2', '3', '4']
 for a in adapt_steps:
