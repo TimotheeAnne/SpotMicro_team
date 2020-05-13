@@ -7,6 +7,7 @@ from copy import deepcopy
 # from pyprind import ProgBar
 # from utils import ProgBar
 from tqdm import tqdm
+import higher
 
 
 class Embedding_NN(nn.Module):
@@ -79,17 +80,18 @@ class Embedding_NN(nn.Module):
     def predict(self, x, task_ids=None):
         '''Use predict methods when not optimizing the model'''
         # Normalize the input
-        x_tensor = (torch.Tensor(x).cuda() - self.data_mean_input) / self.data_std_input if self.cuda_enabled else (
-                                                                                                                               torch.Tensor(
-                                                                                                                                   x) - self.data_mean_input) / self.data_std_input
+        x_tensor = (torch.Tensor(x).cuda() - self.data_mean_input) / self.data_std_input if self.cuda_enabled \
+            else (torch.Tensor(x) - self.data_mean_input) / self.data_std_input
 
         if task_ids is not None:
             task_ids_tensor = torch.LongTensor(task_ids).cuda() if self.cuda_enabled else torch.LongTensor(task_ids)
-        else:
+        elif self.embedding_dim > 0:
             tensor_shape = (x.shape[0], 1)
             task_ids_tensor = torch.LongTensor(
                 np.ones(tensor_shape) * self._fixed_task_id).cuda() if self.cuda_enabled else torch.LongTensor(
                 np.ones(tensor_shape) * self._fixed_task_id)
+        else:
+            task_ids_tensor = None
         # De-normalize 
         return (self.forward(x_tensor,
                              task_ids_tensor) * self.data_std_output + self.data_mean_output).detach().cpu().numpy()
@@ -99,12 +101,14 @@ class Embedding_NN(nn.Module):
         x_normalized = (x - self.data_mean_input) / self.data_std_input
         if task_ids is not None:
             return (self.forward(x_normalized, task_ids) * self.data_std_output + self.data_mean_output).detach()
-        else:
+        elif self.embedding_dim > 0:
             tensor_shape = (x.size(0), 1)
             task_ids = torch.LongTensor(
                 np.ones(tensor_shape) * self._fixed_task_id).cuda() if self.cuda_enabled else torch.LongTensor(
                 np.ones(tensor_shape) * self._fixed_task_id)
             return (self.forward(x_normalized, task_ids) * self.data_std_output + self.data_mean_output).detach()
+        else:
+            return (self.forward(x_normalized, None) * self.data_std_output + self.data_mean_output).detach()
 
     def loss_function(self, y, y_pred):
         ''' y and y-pred must be normalized'''
@@ -124,7 +128,8 @@ class Embedding_NN(nn.Module):
         Fix the task id for the network so that output can be predicted just sending the x alone.
         '''
         if task_id is not None:
-            assert task_id >= 0 and task_id < self.num_tasks, "task_id must be a positive integer less than number of tasks "+str(self.num_tasks)
+            assert task_id >= 0 and task_id < self.num_tasks, "task_id must be a positive integer less than number of tasks " + str(
+                self.num_tasks)
             self._fixed_task_id = task_id
 
     def get_embedding(self, task_ids):
@@ -270,12 +275,98 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
         model.load_state_dict(
             {name: weights_before[name] + (weights_after[name] - weights_before[name]) * stepsize for name in
              weights_before})
-        if model.embedding_dim > 0 and (meta_count+1) % len(tasks_in) == 0:
-            saved_embeddings[int((meta_count+1)/len(tasks_in))] = deepcopy(model.embeddings.weight)
+        if model.embedding_dim > 0 and (meta_count + 1) % len(tasks_in) == 0:
+            saved_embeddings[int((meta_count + 1) / len(tasks_in))] = deepcopy(model.embeddings.weight)
     if model.embedding_dim > 0:
         return Task_losses, Valid_losses, saved_embeddings.detach().cpu().numpy()
     else:
         return Task_losses, Valid_losses, None
+
+
+def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_step=1e-3, meta_step=1e-3, K=32, M=32):
+    """
+    meta-training with second order optimization
+
+    model: Instance of Embedding_NN,
+    tasks_in: list of input data for each task
+    tasks_out: list of input data for each task
+    meta_iter: Outer loop (meta update) count
+    inner_iter: inner loop (task update) count
+    inner_step: inner loop step size
+    meta_step: outer loop step size
+    M: number of samples to adapt the model (meta-training training)
+    K: number of samples to evaluate the model for the meta-loss (meta-training testing)
+    """
+
+    all_data_in = []
+    all_data_out = []
+    for task_id in range(len(tasks_in)):
+        for i in range(len(tasks_in[task_id])):
+            all_data_in.append(tasks_in[task_id][i])
+            all_data_out.append(tasks_out[task_id][i])
+
+    model.data_mean_input = torch.Tensor(np.mean(all_data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_in, axis=0))
+    model.data_mean_output = torch.Tensor(np.mean(all_data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_out, axis=0))
+    model.data_std_input = torch.Tensor(np.std(all_data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_in, axis=0)) + 1e-10
+    model.data_std_output = torch.Tensor(np.std(all_data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_out, axis=0)) + 1e-10
+
+    xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
+    yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
+
+    tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
+    tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
+
+    task_losses = np.zeros(len(tasks_in))
+    Task_losses = [[] for _ in range(len(tasks_in))]
+
+    if model.embedding_dim > 0:
+        saved_embeddings = torch.empty((meta_iter, len(tasks_in), model.embedding_dim))
+        saved_embeddings[0] = deepcopy(model.embeddings.weight)
+
+    """ Meta-training """
+    tbar = tqdm(range(meta_iter))
+    for meta_count in tbar:
+        outer_grad = [None for _ in range(len(tasks_in))]
+        for task_index in range(len(tasks_in)):
+            learner = deepcopy(model)
+            opt = torch.optim.Adam(learner.parameters(), lr=inner_step)
+            with higher.innerloop_ctx(learner, opt) as (fmodel, diffopt):
+                """ Selection of the M+K samples for the current task"""
+                N = len(tasks_in_tensor[task_index])
+                assert N >= K+M, "not enough samples"
+                r = np.random.randint(0, N-K-M, 1)
+                permutation = np.arange(r, r+K+M)
+                x = tasks_in_tensor[task_index][permutation]
+                y = tasks_out_tensor[task_index][permutation]
+                tasks_tensor = torch.LongTensor([[task_index] for _ in range(K+M)]).cuda() if model.cuda_enabled else torch.LongTensor([[task_index] for _ in range(K+M)])
+                fmodel.train(mode=True)
+                """ Meta-training training on the M first samples"""
+                for _ in range(inner_iter):
+                    pred = fmodel(x[:M], tasks_tensor[:M])
+                    training_loss = fmodel.loss_function(pred, y[:M])
+                    diffopt.step(training_loss)
+                """ Meta-training testing on the k next samples"""
+                pred = fmodel(x[M:], tasks_tensor[M:])
+                testing_loss = fmodel.loss_function(pred, y[M:])
+                """ Saving meta-loss on current task """
+                outer_grad[task_index] = torch.autograd.grad(testing_loss, fmodel.parameters(time=0))
+
+            task_losses[task_index] = testing_loss/(K+M)
+            Task_losses[task_index].append(testing_loss/K+M)
+
+        tbar.set_description("training " + str(task_losses))
+        """ outer-loop update """
+        for i, param in enumerate(model.parameters()):
+            for j in range(len(outer_grad)):
+                param.data -= meta_step * outer_grad[j][i]
+
+        if model.embedding_dim > 0:
+            saved_embeddings[meta_count+1] = deepcopy(model.embeddings.weight)
+
+    if model.embedding_dim > 0:
+        return Task_losses, None,  saved_embeddings.detach().cpu().numpy()
+    else:
+        return Task_losses, None, None
 
 
 def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, optimizer=None):
