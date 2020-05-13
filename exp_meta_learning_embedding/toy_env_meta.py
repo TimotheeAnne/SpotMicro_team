@@ -22,7 +22,7 @@ colors = ['#332288', '#117733',
           '#AA4499', '#882255']
 
 
-def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[]):
+def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[], order=1):
     model = nn_model.Embedding_NN(dim_in=config["dim_in"],
                                   hidden=config["hidden_layers"],
                                   dim_out=config["dim_out"],
@@ -33,17 +33,28 @@ def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[]):
                                   output_limit=config["output_limit"],
                                   dropout=0.0,
                                   hidden_activation=config["hidden_activation"])
-    task_losses, valid_losses, saved_embeddings = nn_model.train_meta(model,
-                                                                      tasks_in,
-                                                                      tasks_out,
-                                                                      valid_in=valid_in,
-                                                                      valid_out=valid_out,
-                                                                      meta_iter=config["meta_iter"],
-                                                                      inner_iter=config["inner_iter"],
-                                                                      inner_step=config["inner_step"],
-                                                                      meta_step=config["meta_step"],
-                                                                      minibatch=config["meta_batch_size"],
-                                                                      inner_sample_size=config["inner_sample_size"])
+    if order == 1:
+        task_losses, valid_losses, saved_embeddings = nn_model.train_meta(model,
+                                                                          tasks_in,
+                                                                          tasks_out,
+                                                                          valid_in=valid_in,
+                                                                          valid_out=valid_out,
+                                                                          meta_iter=config["meta_iter"],
+                                                                          inner_iter=config["inner_iter"],
+                                                                          inner_step=config["inner_step"],
+                                                                          meta_step=config["meta_step"],
+                                                                          minibatch=config["meta_batch_size"],
+                                                                          inner_sample_size=config["inner_sample_size"])
+    else:
+        task_losses, valid_losses, saved_embeddings = nn_model.train_meta2(model,
+                                                                           tasks_in,
+                                                                           tasks_out,
+                                                                           meta_iter=config["meta_iter"],
+                                                                           inner_iter=config["inner_iter"],
+                                                                           inner_step=config["inner_step"],
+                                                                           meta_step=config["meta_step"],
+                                                                           K=config["K"],
+                                                                           M=config["M"])
     return model, task_losses, saved_embeddings, valid_losses
 
 
@@ -80,7 +91,7 @@ config = {
 
     # meta training
     "meta_iter": 500,  # 5000,
-    "meta_step": 0.3,
+    "meta_step": 1e-3,
     "inner_iter": 10,  # 10,
     "inner_step": 0.0001,
     "meta_batch_size": 32,
@@ -103,12 +114,11 @@ train_out = []
 for (f, phi) in config['env_param']:
     func = param_to_sin(f, phi)
     base_outs.append(func(base_in))
-    x = np.random.uniform(0, 2*pi, (config['train_size'], 1))
+    x = np.random.uniform(0, 2 * pi, (config['train_size'], 1))
     train_in.append(np.copy(x))
     train_out.append(func(x))
 
-trained_model, _, _, _ = train_meta(train_in, train_out, config)
-
+trained_model, _, _, _ = train_meta(train_in, train_out, config, order=2)
 
 test_out = []
 models = [copy.deepcopy(trained_model) for _ in range(len(config['env_param']))]
@@ -120,7 +130,7 @@ for task_id, m in enumerate(models):
 adapt_out = []
 for i, (f, phi) in enumerate(config['env_param']):
     func = param_to_sin(f, phi)
-    x = np.random.uniform(0, 2*pi, (config['adapt_size'], 1))
+    x = np.random.uniform(0, 2 * pi, (config['adapt_size'], 1))
     y = func(x)
     task_index = i
     adapted_model = train_model(model=models[i], train_in=x, train_out=y, task_id=task_index, config=config)
@@ -129,7 +139,7 @@ for i, (f, phi) in enumerate(config['env_param']):
 """ Plot """
 
 for i, base_out in enumerate(base_outs):
-    plt.plot(base_in, base_out, colors[i], label="base "+str(i), lw=3)
+    plt.plot(base_in, base_out, colors[i], label="base " + str(i), lw=3)
     plt.scatter(train_in[i], train_out[i], marker="o", s=100, c=colors[i], label="training")
     plt.plot(base_in, adapt_out[i], ls="--", lw=3, c=colors[i], label="after adaptation")
     plt.plot(base_in, test_out[i], ls=":", c=colors[i], label="before adaptation")
