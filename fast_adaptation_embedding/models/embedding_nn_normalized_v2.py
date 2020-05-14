@@ -351,8 +351,8 @@ def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner
                 """ Saving meta-loss on current task """
                 outer_grad[task_index] = torch.autograd.grad(testing_loss, fmodel.parameters(time=0))
 
-            task_losses[task_index] = testing_loss/(K+M)
-            Task_losses[task_index].append(testing_loss/K+M)
+            task_losses[task_index] = testing_loss.detach().cpu().numpy()/K
+            Task_losses[task_index].append(testing_loss.detach().cpu().numpy()/K)
 
         tbar.set_description("training " + str(task_losses))
         """ outer-loop update """
@@ -398,7 +398,7 @@ def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, mini
 
     optimizer = optim.Adam(model.parameters(), lr=inner_lr) if optimizer is None else optimizer
     model.train(mode=True)
-
+    Loss = []
     for inner_count in range(inner_iter):
         permutation = np.random.permutation(len(data_in))
         x = data_in_tensor[permutation]
@@ -412,10 +412,11 @@ def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, mini
             loss.backward()
             optimizer.step()
             losses.append(loss.item() / batch_size)
-
+        Loss.append(np.mean(losses))
         # ~ bar.update(item_id= "Iter " + str(inner_count) + " | Loss: "+str(np.mean(losses)))
 
     model.train(mode=False)
+    return Loss
 
 
 def gen_test_task(task_id):
