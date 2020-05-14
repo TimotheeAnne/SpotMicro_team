@@ -28,7 +28,7 @@ except:
 
 class Cost(object):
     def __init__(self, ensemble_model, init_state, horizon, action_dim, goal, config, last_action,
-                 speed=None):
+                 obs_attributes_index, speed=None):
         self.__ensemble_model = ensemble_model
         self.__init_state = init_state
         self.__horizon = horizon
@@ -39,6 +39,7 @@ class Cost(object):
         self.__discount = config['discount']
         self.__batch_size = config['ensemble_batch_size']
         self.__xreward = config['xreward']
+        self.__yreward = config['yreward']
         self.__zreward = config['zreward']
         self.__rollreward = config['rollreward']
         self.__pitchreward = config['pitchreward']
@@ -61,6 +62,8 @@ class Cost(object):
         self.__sol_dim = config["sol_dim"]  # 2*10 #action dim*horizon
         self.__action_space = config['action_space']
         self.__ctrl_time_step = config['ctrl_time_step']
+        self.__obs_at_ind = obs_attributes_index
+        self.__obs_at = config['obs_attributes']
 
     def cost_fn(self, samples):
         a = torch.FloatTensor(samples).cuda() \
@@ -120,12 +123,28 @@ class Cost(object):
                 model_input = torch.cat((start_states, actions), dim=1)
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
-                x_vel_cost = (start_states[:, 30] - self.__desired_speed) ** 2 * self.__xreward
-                z_cost = (start_states[:, -1] - 0.1855) ** 2 * self.__zreward
-                roll_cost = (start_states[:, 24]) ** 2 * self.__rollreward
-                pitch_cost = (start_states[:, 25]) ** 2 * self.__pitchreward
-                yaw_cost = (start_states[:, 26]) ** 2 * self.__yawreward
-
+                # necessary to move forwards
+                x_vel_cost = (start_states[:, self.__obs_at_ind['xdot']] - self.__desired_speed) ** 2 * self.__xreward
+                # not 'necessary?' rewards
+                if 'ydot' in self.__obs_at:
+                    y_vel_cost = (start_states[:, self.__obs_at_ind['ydot']]) ** 2 * self.__yreward
+                    all_costs[start_index: end_index] += -torch.exp(-y_vel_cost) * self.__discount ** h
+                if 'y' in self.__obs_at:
+                    y_cost = (start_states[:, self.__obs_at_ind['y']]) ** 2 * self.__yreward
+                    all_costs[start_index: end_index] += -torch.exp(-y_cost) * self.__discount ** h
+                if 'z' in self.__obs_at:
+                    z_cost = (start_states[:, self.__obs_at_ind['z']] - 0.1855) ** 2 * self.__zreward
+                    all_costs[start_index: end_index] += -torch.exp(-z_cost) * self.__discount ** h
+                if 'zdot' in self.__obs_at:
+                    zdot_cost = (start_states[:, self.__obs_at_ind['zdot']] - 0.1855) ** 2 * self.__zreward
+                    all_costs[start_index: end_index] += -torch.exp(-zdot_cost) * self.__discount ** h
+                if 'rpy' in self.__obs_at:
+                    roll_cost = (start_states[:, self.__obs_at_ind['rpy'][0]]) ** 2 * self.__rollreward
+                    pitch_cost = (start_states[:, self.__obs_at_ind['rpy'][1]]) ** 2 * self.__pitchreward
+                    yaw_cost = (start_states[:, self.__obs_at_ind['rpy'][2]]) ** 2 * self.__yawreward
+                    all_costs[start_index: end_index] += -torch.exp(-yaw_cost) * self.__discount ** h \
+                                                         + -torch.exp(-pitch_cost) * self.__discount ** h \
+                                                         + -torch.exp(-roll_cost) * self.__discount ** h
                 if self.__soft_smoothing:
                     action_norm_cost = torch.sum(-torch.exp(-self.__action_norm_w * (
                         action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]) ** 2))
@@ -151,11 +170,7 @@ class Cost(object):
                                                    (h - 3) * self.__action_dim: (h - 2) * self.__action_dim]) ** 2)
                     all_costs[start_index: end_index] += torch.sum(action_jerk_cost, axis=1) * self.__discount ** h
 
-                all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h \
-                                                     + -torch.exp(-yaw_cost) * self.__discount ** h \
-                                                     + -torch.exp(-pitch_cost) * self.__discount ** h \
-                                                     + -torch.exp(-roll_cost) * self.__discount ** h \
-                                                     + -torch.exp(-z_cost) * self.__discount ** h
+                all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h
 
         if self.__hard_smoothing:
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
@@ -196,8 +211,7 @@ def process_data(data):
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
     current_state = env.reset(hard_reset=True)
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
-                                                  config[
-                                                      'max_action_jerk'], config['max_torque_jerk']
+                                                  config['max_action_jerk'], config['max_torque_jerk']
     lb, ub = config['lb'], config['ub']
     trajectory = []
     traject_cost = 0
@@ -252,7 +266,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             K, index_iter, final_iter, samples, env_index, n_task, n_model=0, model_index=0, test=False):
     index_iter = index_iter // (n_task * n_model) if test else (index_iter // n_task - config["random_episodes"])
     if config['record_video']:
-        if test and (index_iter % config['video_recording_frequency'] == 0 or index_iter == final_iter - 1):
+        if test and (index_iter + 1 % config['video_recording_frequency'] == 0 or index_iter == final_iter - 1):
             recorder = VideoRecorder(env, config['logdir'] + "/videos/" + "test_env_" + str(env_index) + "_model_" +
                                      str(model_index) + "_run_" + str(index_iter) + ".mp4")
         elif not test and ((index_iter % config['video_recording_frequency'] == 0) or (
@@ -272,8 +286,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                           action_dim=env.action_space.shape[0], goal=config["goal"],
-                           config=config, last_action=virtual_acs, speed=None)
+                           action_dim=env.action_space.shape[0], goal=config["goal"], speed=None,
+                           config=config, last_action=virtual_acs, obs_attributes_index=env.obs_attributes_index)
 
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
@@ -318,8 +332,8 @@ def execute_online(env, steps, model, config, K, samples,
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                           action_dim=env.action_space.shape[0], goal=config["goal"],
-                           config=config, last_action=virtual_acs, speed=None)
+                           action_dim=env.action_space.shape[0], goal=config["goal"], speed=None,
+                           config=config, last_action=virtual_acs, obs_attributes_index=env.obs_attributes_index)
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
         sol = optimizer.obtain_solution(acs=virtual_acs)
@@ -403,8 +417,9 @@ def execute_real_time(env, model, config, K):
             if MPC:
                 virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
                 cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
-                                   action_dim=env.action_space.shape[0], goal=config["goal"],
-                                   config=config, last_action=virtual_acs, speed=vd)
+                                   action_dim=env.action_space.shape[0], goal=config["goal"], speed=vd,
+                                   config=config, last_action=virtual_acs,
+                                   obs_attributes_index=env.obs_attributes_index)
 
                 config["cost_fn"] = cost_object.cost_fn
                 optimizer = RS_opt(config)
@@ -509,15 +524,12 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     best_reward, best_distance = -np.inf, -np.inf
     '''-------------Attempt to load saved data------------------'''
     if config['pretrained_model'] is not None:
-        mismatches = np.load(config['pretrained_model'] + "/mismatches.npy", allow_pickle=True)
-        n_task = len(mismatches)
-        models = n_task * [None]
+        models = []
         device = torch.device("cuda") if config["cuda"] else torch.device("cpu")
-        for i in range(n_task):
-            models[i] = load_model(config['pretrained_model'] + "/models/ensemble_" + str(i) + "/", device=device)
+        for i in range(len(config['pretrained_model'])):
+            models.append(load_model(config['pretrained_model'][i] + "/models/ensemble_0/", device=device))
         config['iterations'] = 0
         print("Found pretrained model. Passing directly to testing model.")
-
     elif os.path.exists(config["data_dir"] + "/trajectories.npy") and os.path.exists(
             config["data_dir"] + "/mismatches.npy"):
         print("Found stored data. Setting random trials to zero.")
@@ -526,14 +538,15 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         config["random_episodes"] = 0
         n_task = len(mismatches)
 
+        for i in range(n_task):
+            with open(res_dir + "/costs_task_" + str(i) + ".txt", "w+") as f:
+                f.write("")
+
+        np.save(res_dir + '/mismatches.npy', mismatches)
+
     env = gym.make(*gym_args, **gym_kwargs)
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
 
-    for i in range(n_task):
-        with open(res_dir + "/costs_task_" + str(i) + ".txt", "w+") as f:
-            f.write("")
-
-    np.save(res_dir + '/mismatches.npy', mismatches)
     t = trange(config["iterations"] * n_task, desc='', leave=True)
     for index_iter in t:
         env_index = int(index_iter % n_task)
@@ -646,15 +659,24 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     f.write("")
 
         np.save(res_dir + '/test_mismatches.npy', test_mismatches)
-        t = trange(config["test_iterations"] * n_task * len(models), desc='', leave=True)
+        if config['online_experts'] is None:
+            t = trange(config["test_iterations"] * n_task * len(models), desc='', leave=True)
+        else:
+            t = trange(config["test_iterations"] * n_task, desc='', leave=True)
         for index_iter in t:
             if config['online']:
                 samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
                            'observed_torques': []}
-                model_index = index_iter % len(models)
-                env_index = int(index_iter / len(models)) % n_task
-                local_index = index_iter // (n_task * len(models))
-                if (local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config["test_iterations"] - 1:
+                if config['online_experts'] is None:
+                    model_index = (index_iter % len(models))
+                    env_index = int(index_iter / len(models)) % n_task
+                    local_index = index_iter // (n_task * len(models))
+                else:
+                    model_index = config['online_experts'][0]
+                    env_index = int(index_iter) % n_task
+                    local_index = index_iter // n_task
+                if (local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config[
+                    "test_iterations"] - 1:
                     recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(local_index) + ".mp4")
                 else:
                     recorder = None
@@ -669,6 +691,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     if steps in test_mismatches[env_index][0]:
                         mismatch_index = test_mismatches[env_index][0].index(steps)
                         env.set_mismatch(test_mismatches[env_index][1][mismatch_index])
+                        model_index = config['online_experts'][mismatch_index]
                     trajectory = []
                     c, done, past = execute_online(env=env,
                                                    steps=config['successive_steps'],
@@ -694,7 +717,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
-
+                if config['online_experts'] is not None:
+                    model_index = 0
                 traj_obs[model_index][env_index].append(samples["obs"])
                 traj_acs[model_index][env_index].append(samples["acs"])
                 traj_reward[model_index][env_index].append(samples["reward"])
@@ -707,7 +731,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 env_index = int(index_iter / len(models)) % n_task
                 env.set_mismatch(test_mismatches[env_index])
                 model_index = index_iter % len(models)
-                samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
+                samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
+                           'observed_torques': []}
 
                 '''------------Update models------------'''
                 _, c = execute(env=env,
@@ -742,10 +767,9 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 traj_desired_torques[model_index][env_index].extend(samples["desired_torques"])
                 traj_observed_torques[model_index][env_index].extend(samples["observed_torques"])
 
-            with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt","a+") as f:
+            with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt",
+                      "a+") as f:
                 f.write(str(c) + "\n")
-
-
 
             with open(os.path.join(config['logdir'], "test_logs.pk"), 'wb') as f:
                 pickle.dump({
@@ -784,12 +808,12 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 25,  # per task
+    "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 1,
+    "test_iterations": 20,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -802,8 +826,10 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
     "desired_speed": 0.5,
     "xreward": 1,
+    "yreward": 1,
     "zreward": 1,
     "rollreward": 1,
     "pitchreward": 1,
@@ -819,7 +845,7 @@ config = {
     "record_video": 1,
     "video_recording_frequency": 50,
     "result_dir": "results",
-    "env_name": "spot_micro_04",
+    "env_name": "spot_micro_05",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "SpotMicro evaluate from scratch",
@@ -827,6 +853,7 @@ config = {
     "data_dir": "",
     "logdir": None,
     "pretrained_model": None,
+    "online_experts": None,
 
     # Ensemble model params
     "cuda": True,
@@ -912,7 +939,9 @@ mismatches = [
 ]
 
 test_mismatches = None
-test_mismatches = ([0, 250, 500], [{}, {'friction': 0.2}, {"friction": 0.2, 'faulty_motors': [4], 'faulty_joints': [0]}])
+test_mismatches = [
+    {},
+]
 
 config['test_mismatches'] = test_mismatches
 
@@ -921,33 +950,35 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "eval_mismatches"
+config['exp_suffix'] = "obs_attributes"
 config_params = []
+attributes = [['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+              ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot'],
+              ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot'],
+              ['q', 'qdot', 'rpy', 'rpydot', 'xdot'],
+              ['q', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+              ['q', 'qdot', 'rpydot', 'z', 'xdot', 'ydot'],
+              ['q', 'qdot', 'rpy', 'z', 'xdot', 'ydot'],
+              ['qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+              ['q', 'qdot', 'rpy', 'rpydot', 'zdot', 'xdot', 'y'],
+              ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'y'],
+              ]
 
-# path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
-# directory = '07_04_2020_11_10_01_test_mismatches_copy'
+for attribute in attributes:
+    config_params.append({'obs_attributes': attribute})
+
+
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_0"
+# runs = ['0', '1', '2', '3', '4']
 #
-# runs = ["1"]
-# for i in range(len(runs)):
-#     for mismatch in [
-#         ([0, 250], [{}, {'friction': 0.2}]),
-#     ]:
+# for i in range(len(test_mismatches)):
+#     for j in range(len(runs)):
 #         config_params.append({
-#             'pretrained_model': path + config['env_name'] + "/" + directory + "/run_"+runs[i],
-#             'test_mismatches': [mismatch]})
+#             'pretrained_model': [path + "/run_"+runs[j]],
+#             "online_experts": [0],
+#             'test_mismatches': [([0], [test_mismatches[i]])]})
 
 
-test_mismatches = [
-    {'faulty_motors': [1], 'faulty_joints': [0]},
-    {'faulty_motors': [2], 'faulty_joints': [-1]},
-    {'faulty_motors': [7], 'faulty_joints': [0]},
-    {'faulty_motors': [8], 'faulty_joints': [-1]},
-]
-
-run_mismatches = []
-for i in range(len(test_mismatches)):
-    config_params.append({'test_mismatches': []})
-    run_mismatches.append([test_mismatches[i]])
 
 
 def apply_config_params(conf, params):
@@ -974,6 +1005,7 @@ def env_args_from_config(config):
         "ub": np.array(config["real_ub"]),
         "lb": np.array(config["real_lb"]),
         "normalized_action": True,
+        "obs_attributes": config['obs_attributes'],
     }
 
 
@@ -985,9 +1017,6 @@ if real_time:
     config["rollreward"] = 1
     config["pitchreward"] = 1
     config["yawreward"] = 1
-    # config["init_joint"] = [0.2, 0.1, 0.25]*2+[0, -0.1, 0.25]*2
-    # config["real_ub"] = [0.4, -0., 1.65] * 2 + [0.02, -0.45, 1.65] * 2
-    # config["real_lb"] = [0, -0.75, 1.2] * 2 + [-0.09, -1.2, 1.2] * 2
     path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
     directory = ['27_03_2020_11_04_21_Slippery_floor'][0]
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"

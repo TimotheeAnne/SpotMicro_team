@@ -67,7 +67,8 @@ class SpotMicroEnv(gym.Env):
                  faulty_motors=[],
                  faulty_joints=[],
                  load_weight=0,
-                 load_pos=0
+                 load_pos=0,
+                 obs_attributes=['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
                  ):
 
         self.is_render = render
@@ -145,13 +146,15 @@ class SpotMicroEnv(gym.Env):
                                                        fixedTimeStep=self.fixedTimeStep)
         self.pybullet_client.resetDebugVisualizerCamera(1, 85.6, 0, [-0.61, 0.12, 0.25])
 
-        action_dim = 12  # [steering, step_size, leg_extension, leg_extension_offset]
+        action_dim = 12
         self._past_actions = np.zeros((4, action_dim))
         self._past_velocity = np.zeros((2, action_dim))
 
         self._action_bound = 1
         action_high = np.array([self._action_bound] * action_dim)
         self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
+        self.obs_attributes = obs_attributes
+        self.obs_attributes_index = {}
         observation_high = (self.get_observation_upper_bound())
         observation_low = (self.get_observation_lower_bound())
         self.observation_space = spaces.Box(observation_low, observation_high, dtype=np.float32)
@@ -181,6 +184,8 @@ class SpotMicroEnv(gym.Env):
 
         if (self.load_pos, self.load_weight) in [(0.07, 1), (0.07, 2), (-0.07, 1), (-0.07, 2)]:
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_front_1kg.urdf.xml'
+        elif self.faulty_motors == [3, 4, 5]:
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_tripod.urdf.xml'
         else:
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
 
@@ -418,24 +423,49 @@ class SpotMicroEnv(gym.Env):
 
     def get_obs(self):
         Obs = []
-        Obs.extend(self.GetMotorAngles().tolist())
-        Obs.extend(self._filter_velocities(self.GetMotorVelocities()).tolist())
-        Obs.extend(self.get_body_rpy())
-        Obs.extend(self.get_angular_velocity())
-        Obs.extend(self.get_linear_velocity()[:2])  # x and y velocity
-        Obs.extend(self.get_body_xyz()[2:3])  # z height
+        self.obs_attributes_index = {}
+        if 'q' in self.obs_attributes:
+            self.obs_attributes_index['q'] = len(Obs)
+            Obs.extend(self.GetMotorAngles().tolist())
+        if 'qdot' in self.obs_attributes:
+            self.obs_attributes_index['qdot'] = len(Obs)
+            Obs.extend(self._filter_velocities(self.GetMotorVelocities()).tolist())
+        if 'rpy' in self.obs_attributes:
+            self.obs_attributes_index['rpy'] = len(Obs)
+            Obs.extend(self.get_body_rpy())
+        if 'rpydot' in self.obs_attributes:
+            self.obs_attributes_index['rpydot'] = len(Obs)
+            Obs.extend(self.get_angular_velocity())
+        if 'x' in self.obs_attributes:
+            self.obs_attributes_index['x'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[:1])  # x  velocity
+        if 'y' in self.obs_attributes:
+            self.obs_attributes_index['y'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[1:2])  # y velocity
+        if 'z' in self.obs_attributes:
+            self.obs_attributes_index['z'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[2:3])  # z velocity
+        if 'xdot' in self.obs_attributes:
+            self.obs_attributes_index['xdot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[:1])  # x  velocity
+        if 'ydot' in self.obs_attributes:
+            self.obs_attributes_index['ydot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[1:2])  # y velocity
+        if 'zdot' in self.obs_attributes:
+            self.obs_attributes_index['zdot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[2:3])  # z velocity
         return Obs
 
     def set_desired_speed(self, speed):
         self.desired_speed = speed
 
     def get_reward(self):
-        obs = self.get_obs()
-        distance_reward = -(obs[-2] - self.desired_speed) ** 2
-        high_reward = -(obs[-1] - 0.1855) ** 2
-        roll_reward = -(obs[24]) ** 2
-        pitch_reward = -(obs[25]) ** 2
-        yaw_reward = -(obs[26]) ** 2
+        distance_reward = -(self.get_linear_velocity()[0] - self.desired_speed) ** 2
+        high_reward = -(self.get_body_xyz()[2] - 0.1855) ** 2
+        rpy = self.get_body_rpy()
+        roll_reward = -(rpy[0]) ** 2
+        pitch_reward = -(rpy[1]) ** 2
+        yaw_reward = -(rpy[2]) ** 2
         action_reward = -np.sum((self._past_actions[3]) ** 2)
         action_vel_reward = -np.sum((self._past_actions[3] - self._past_actions[2]) ** 2)
         action_acc_reward = -np.sum((self._past_actions[3] - 2 * self._past_actions[2] + self._past_actions[1]) ** 2)
@@ -575,6 +605,8 @@ if __name__ == "__main__":
             config.append({'maxi': maxi, 'real_ub': bound[0], 'real_lb': bound[1]})
 
     init_joint = np.array([0., 0.6, -1.] * 4)
+    # init_joint = np.array([-0.2, 0.6, -1.] + [0., 0.6, -1.] + [-0.2, 0.6, -1.] + [0.2, 0.6, -1.])
+
     real_ub = np.array(config[run]['real_ub'] * 4)  # max [0.548, 1.548, 2.59]
     real_lb = np.array(config[run]['real_lb'] * 4)  # min [-0.548, -2.666, -0.1]
 
@@ -599,13 +631,14 @@ if __name__ == "__main__":
                    faulty_joints=[],
                    load_weight=0,
                    load_pos=0,
+                   obs_attributes=['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
                    )
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'faulty_motors': [4], 'faulty_joints': [0]})
-        # env.set_mismatch({'wind_force': 1})
-        init_obs = env.reset(hard_reset=1)
+        env.set_mismatch({'faulty_motors': [10], 'faulty_joints': [1.3]})
+
+        init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
 
         # recorder = None
@@ -660,7 +693,7 @@ if __name__ == "__main__":
                               axis=0)
                 amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
             x = np.random.uniform(amin, amax)
-            # x = past[-1]
+            x = past[-1]
             # x[:6] = past[-1][:6]
             action = np.copy(x)
             if actions is not None:
