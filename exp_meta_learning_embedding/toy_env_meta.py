@@ -130,14 +130,14 @@ experiment_name = timestamp + "_" + base_config["exp_suffix"]
 path = os.path.join(os.getcwd(), "results", "toy_env", experiment_name)
 os.makedirs(path)
 
-
-inner_step = [1e-2, 1e-3, 1e-4]
+meta_step = [1e-3, 1e-4]
+inner_step = [1e-3, 1e-4]
 inner_iter = [100, 500]
-meta_iter = [20, 200]
+meta_iter = [100, 1000]
 adapt_size = [16, 32]
 meta_train_size = [64, 128]
-keys = ['inner_step', 'inner_iter', 'meta_iter', 'adapt_size', 'meta_train_size']
-somelists = [inner_step, inner_iter, meta_iter, adapt_size, meta_train_size]
+keys = ['meta_step', 'inner_step', 'inner_iter', 'meta_iter', 'adapt_size', 'meta_train_size']
+somelists = [meta_step, inner_step, inner_iter, meta_iter, adapt_size, meta_train_size]
 config_params = []
 for element in itertools.product(*somelists):
     param = {}
@@ -193,11 +193,12 @@ for i, config_param in enumerate(config_params):
     for i in range(N):
         plt.plot(meta_train_test_loss[i], label=str(i))
     plt.yscale('log')
+    plt.legend()
     plt.xlabel("outer-loop iterations")
     plt.ylabel('loss')
     plt.title("Meta-training testing loss")
     plt.savefig(run_path+"/training_testing.svg")
-
+    plt.close()
     """ Meta-adaptation """
     if config['meta_iter'] > 0:
         models = [copy.deepcopy(trained_model) for _ in range(N)]
@@ -220,7 +221,7 @@ for i, config_param in enumerate(config_params):
     plt.legend()
     plt.title("Adaptation loss comparison with and without meta-learning")
     plt.savefig(run_path+"/testing_testing_loss.svg")
-
+    plt.close()
     plt.subplots(figsize=(16, 9))
     for i, base_out in enumerate(base_outs):
         plt.plot(base_in, base_out, colors[i], label="base " + str(i), lw=3)
@@ -234,7 +235,7 @@ for i, config_param in enumerate(config_params):
     plt.ylabel('output')
     plt.title('Regression after adaptation with and without meta-learning')
     plt.savefig(run_path+"/regression.svg")
-
+    plt.close()
     """ Saving logs """
     log = dict()
     log['base_in'] = base_in
@@ -246,7 +247,6 @@ for i, config_param in enumerate(config_params):
     log['meta_test_train_loss'] = meta_test_train_loss
     log['meta_test_test_loss'] = meta_test_test_loss
     log['meta_train_test_loss'] = meta_train_test_loss
-
 
     with open(run_path + '/logs.pk', 'wb') as f:
         pickle.dump(log, f)
