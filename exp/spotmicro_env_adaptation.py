@@ -545,6 +545,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         np.save(res_dir + '/mismatches.npy', mismatches)
 
     env = gym.make(*gym_args, **gym_kwargs)
+    x_index = env.obs_attributes_index['xdot']
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
 
     t = trange(config["iterations"] * n_task, desc='', leave=True)
@@ -612,7 +613,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         if (len(samples['reward'][0])) == config['episode_length']:
             best_reward = max(best_reward, np.sum(samples["reward"]))
-        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * config['ctrl_time_step'])
+        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * config['ctrl_time_step'])
         t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
             -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
         t.refresh()
@@ -626,8 +627,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 "observed_torques": traj_observed_torques,
                 "desired_torques": traj_desired_torques,
             }, f)
-        # if index_iter % config["dump_trajects"] == 0 and index_iter > 0:
-        #     np.save(res_dir + "/trajectories.npy", data)
         with open(res_dir + "/costs_task_" + str(env_index) + ".txt", "a+") as f:
             f.write(str(c) + "\n")
 
@@ -713,7 +712,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, 30]) * 0.02)
+                best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, x_index]) * 0.02)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -755,7 +754,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'][0])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, 30]) * 0.02)
+                best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * 0.02)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -808,7 +807,7 @@ config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
     "iterations": 300,
-    "random_episodes": 1,  # per task
+    "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "online": True,
@@ -924,6 +923,16 @@ config['logdir'] = None if logdir == 'None' else logdir
 
 def check_config(config):
     config['sol_dim'] = config['horizon'] * config['action_dim']
+    obs_dim = 0
+    for attribute in config['obs_attributes']:
+        if attribute in ['q', 'qdot']:
+            obs_dim += 12
+        elif attribute in ['rpy', 'rpydot']:
+            obs_dim += 3
+        elif attribute in ['x', 'y', 'z', 'xdot', 'ydot', 'zdot']:
+            obs_dim += 1
+    config["ensemble_dim_in"] = obs_dim + 12
+    config["ensemble_dim_out"] = obs_dim
 
 
 for (key, val) in arguments.config:
@@ -939,9 +948,6 @@ mismatches = [
 ]
 
 test_mismatches = None
-test_mismatches = [
-    {},
-]
 
 config['test_mismatches'] = test_mismatches
 
@@ -977,8 +983,6 @@ for attribute in attributes:
 #             'pretrained_model': [path + "/run_"+runs[j]],
 #             "online_experts": [0],
 #             'test_mismatches': [([0], [test_mismatches[i]])]})
-
-
 
 
 def apply_config_params(conf, params):
