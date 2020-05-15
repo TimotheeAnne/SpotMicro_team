@@ -320,10 +320,11 @@ def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner
     Task_losses = [[] for _ in range(len(tasks_in))]
 
     if model.embedding_dim > 0:
-        saved_embeddings = torch.empty((meta_iter, len(tasks_in), model.embedding_dim))
+        saved_embeddings = torch.empty((meta_iter+1, len(tasks_in), model.embedding_dim))
         saved_embeddings[0] = deepcopy(model.embeddings.weight)
 
     """ Meta-training """
+    as_nan = False
     tbar = tqdm(range(meta_iter))
     for meta_count in tbar:
         outer_grad = [None for _ in range(len(tasks_in))]
@@ -353,7 +354,11 @@ def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner
 
             task_losses[task_index] = testing_loss.detach().cpu().numpy()/K
             Task_losses[task_index].append(testing_loss.detach().cpu().numpy()/K)
-
+            if np.isnan(task_losses[0]):
+                as_nan = True
+                break
+        if as_nan:
+            break
         tbar.set_description("training " + str(task_losses))
         """ outer-loop update """
         for i, param in enumerate(model.parameters()):
