@@ -436,24 +436,24 @@ class SpotMicroEnv(gym.Env):
         if 'rpydot' in self.obs_attributes:
             self.obs_attributes_index['rpydot'] = len(Obs)
             Obs.extend(self.get_angular_velocity())
-        if 'x' in self.obs_attributes:
-            self.obs_attributes_index['x'] = len(Obs)
-            Obs.extend(self.get_body_xyz()[:1])  # x  velocity
-        if 'y' in self.obs_attributes:
-            self.obs_attributes_index['y'] = len(Obs)
-            Obs.extend(self.get_body_xyz()[1:2])  # y velocity
-        if 'z' in self.obs_attributes:
-            self.obs_attributes_index['z'] = len(Obs)
-            Obs.extend(self.get_body_xyz()[2:3])  # z velocity
         if 'xdot' in self.obs_attributes:
             self.obs_attributes_index['xdot'] = len(Obs)
-            Obs.extend(self.get_linear_velocity()[:1])  # x  velocity
+            Obs.extend(self.get_linear_velocity()[:1])
         if 'ydot' in self.obs_attributes:
             self.obs_attributes_index['ydot'] = len(Obs)
-            Obs.extend(self.get_linear_velocity()[1:2])  # y velocity
+            Obs.extend(self.get_linear_velocity()[1:2])
         if 'zdot' in self.obs_attributes:
             self.obs_attributes_index['zdot'] = len(Obs)
-            Obs.extend(self.get_linear_velocity()[2:3])  # z velocity
+            Obs.extend(self.get_linear_velocity()[2:3])
+        if 'x' in self.obs_attributes:
+            self.obs_attributes_index['x'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[:1])
+        if 'y' in self.obs_attributes:
+            self.obs_attributes_index['y'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[1:2])
+        if 'z' in self.obs_attributes:
+            self.obs_attributes_index['z'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[2:3])
         return Obs
 
     def set_desired_speed(self, speed):
