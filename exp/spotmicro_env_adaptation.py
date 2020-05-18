@@ -825,7 +825,7 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "yreward": 1,
@@ -944,7 +944,7 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    {},
+    {'friction': 0.2},
 ]
 
 test_mismatches = None
@@ -958,20 +958,20 @@ run_mismatches = None
 
 config['exp_suffix'] = "obs_attributes"
 config_params = []
-attributes = [['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-              ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot'],
-              ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot'],
-              ['q', 'qdot', 'rpy', 'rpydot', 'xdot'],
-              ['q', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-              ['q', 'qdot', 'rpydot', 'z', 'xdot', 'ydot'],
-              ['q', 'qdot', 'rpy', 'z', 'xdot', 'ydot'],
-              ['qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-              ['q', 'qdot', 'rpy', 'rpydot', 'zdot', 'xdot', 'y'],
-              ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'y'],
-              ]
+# attributes = [['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+#               ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot'],
+#               ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot'],
+#               ['q', 'qdot', 'rpy', 'rpydot', 'xdot'],
+#               ['q', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+#               ['q', 'qdot', 'rpydot', 'z', 'xdot', 'ydot'],
+#               ['q', 'qdot', 'rpy', 'z', 'xdot', 'ydot'],
+#               ['qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+#               ['q', 'qdot', 'rpy', 'rpydot', 'zdot', 'xdot', 'y'],
+#               ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'y'],
+#               ]
 
-for attribute in attributes:
-    config_params.append({'obs_attributes': attribute})
+for _ in range(4):
+    config_params.append({})
 
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_0"
