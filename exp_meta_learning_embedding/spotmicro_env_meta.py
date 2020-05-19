@@ -823,7 +823,7 @@ for a in adapt_steps:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "damaged_emb_size_" + str(embedding_size) + "_dir_" + data_dir + "_without_1",
+                         "meta_model_name": "damaged&friction_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
                          'training_tasks_index': [0, 1, 2, 3, 4, 5], 'online': False, 'start_from_raw': i,
                          "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
                     test_mismatches.append(mismatches[i])
