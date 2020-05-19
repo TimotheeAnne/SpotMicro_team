@@ -796,23 +796,25 @@ exp_dir = None
 # mismatches = ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}])
 test_mismatches = None
 
-mismatches = [
-    {'faulty_motors': [4], 'faulty_joints': [0]},
-    {'faulty_motors': [4], 'faulty_joints': [0]},
-]
 # mismatches = [
-#     ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-#     ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
-#     ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
-#     ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
+#     {'faulty_motors': [4], 'faulty_joints': [0]},
+#     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
+mismatches = [
+    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
+    ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
+    ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
+    ([0], [{'friction': 0.2}]),
+    ([0], [{'friction': 0.2, 'faulty_motors': [4], 'faulty_joints': [0]}]),
+]
 
 test_mismatches = []
 config_params = []
 
-adapt_steps = [None]
-embedding_sizes = [0]
-epochs = [5]
+adapt_steps = [50]
+embedding_sizes = [10]
+epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -822,7 +824,7 @@ for a in adapt_steps:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
                          "meta_model_name": "damaged_emb_size_" + str(embedding_size) + "_dir_" + data_dir + "_without_1",
-                         'training_tasks_index': [0, 2, 3, 4], 'online': False, 'start_from_raw': i,
+                         'training_tasks_index': [0, 1, 2, 3, 4, 5], 'online': False, 'start_from_raw': i,
                          "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
                     test_mismatches.append(mismatches[i])
 
