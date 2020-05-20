@@ -59,6 +59,8 @@ def train_meta(model, tasks_in, tasks_out, config, valid_in=[], valid_out=[], or
                                                                            inner_iter=config["inner_iter"],
                                                                            inner_step=config["inner_step"],
                                                                            meta_step=config["meta_step"],
+                                                                           normalization=config["normalization"],
+                                                                           inner_n_tasks=config['inner_n_tasks'],
                                                                            K=config["K"],
                                                                            M=config["M"])
     return model, task_losses, saved_embeddings, valid_losses
@@ -72,17 +74,20 @@ def train_model(model, train_in, train_out, task_id, config):
                           task_id=task_id,
                           inner_iter=config["epoch"],
                           inner_lr=config["learning_rate"],
+                          normalization=config["normalization"],
                           minibatch=config["minibatch_size"])
     return cloned_model, loss
 
 
-def param_to_sin(f, phi):
-    return lambda x: sin(f * x + phi)
+def param_to_sin(a, phi):
+    return lambda x: a*sin(x + phi)
 
 
 base_config = {
                 # experience param
-                "env_param": [(1, 0), (1, pi), (1, pi / 2), (1, 3 * pi / 2)],
+                "env_param": [(1, 0), (0.5, pi/2), (2.5, 3*pi / 4)],
+                "total_n_tasks": 1000,
+                "inner_n_tasks": 16,
                 "meta_train_size": 100,
                 "adapt_size": 25,
                 "exp_suffix": "toy_env",
@@ -90,13 +95,14 @@ base_config = {
                 # model
                 "dim_in": 1,
                 "dim_out": 1,
-                "hidden_layers": [128, 128],
-                "embedding_size": 5,
+                "hidden_layers": [64, 64],
+                "embedding_size": 0,
                 "cuda": True,
                 "output_limit": None,
                 "hidden_activation": "relu",
 
                 # meta training
+                "normalization": False,
                 "order": 1,
                 "meta_iter": 20,  # 5000,
                 "meta_step": 1e-3,
@@ -104,13 +110,14 @@ base_config = {
                 "inner_step": 1e-3,
                 "meta_batch_size": 32,
                 "inner_sample_size": 500,
-                "K": 100,
+                "K": 25,
                 "M": None,  # =adapt_size
 
                 # meta_adaptation
-                "epoch": None,  # =inner_iter
+                "epoch": 32,
                 "learning_rate": 1e-4,
                 "minibatch_size": 32,
+                "inner_optimize": 'SGD',
 }
 
 
@@ -118,8 +125,8 @@ def apply_config_params(old_config, params):
     new_config = copy.copy(old_config)
     for (key, val) in list(params.items()):
         new_config[key] = val
-    new_config['epoch'] = new_config['inner_iter']
     new_config['M'] = new_config['adapt_size']
+    new_config['total_n_tasks'] = new_config['meta_iter']
     return new_config
 
 
@@ -130,14 +137,16 @@ experiment_name = timestamp + "_" + base_config["exp_suffix"]
 path = os.path.join(os.getcwd(), "results", "toy_env", experiment_name)
 os.makedirs(path)
 
-meta_step = [1e-3, 1e-4]
-inner_step = [1e-3, 1e-4]
-inner_iter = [100, 500]
-meta_iter = [100, 1000]
-adapt_size = [16, 32]
-meta_train_size = [64, 128]
-keys = ['meta_step', 'inner_step', 'inner_iter', 'meta_iter', 'adapt_size', 'meta_train_size']
-somelists = [meta_step, inner_step, inner_iter, meta_iter, adapt_size, meta_train_size]
+meta_step = [1]
+inner_step = [1e-3]
+inner_iter = [512]
+epoch = [1024]
+meta_iter = [1000]
+adapt_size = [128]
+K = [64]
+meta_train_size = [128]
+keys = ['meta_step', 'inner_step', 'inner_iter', 'epoch', 'meta_iter', 'adapt_size', 'meta_train_size']
+somelists = [meta_step, inner_step, inner_iter, epoch, meta_iter, adapt_size, meta_train_size]
 config_params = []
 for element in itertools.product(*somelists):
     param = {}
@@ -156,7 +165,7 @@ for i, config_param in enumerate(config_params):
     with open(run_path + "/config.txt", "w") as f:
         f.write(str(config))
     """ Creating training and testing data """
-    base_in = np.arange(0, 2 * pi, 0.1)
+    base_in = np.arange(-5, 5, 0.1)
     torch_base_in = torch.FloatTensor(base_in.reshape(-1, 1)).cuda()
     base_outs = []
     N = len(config['env_param'])
@@ -165,14 +174,19 @@ for i, config_param in enumerate(config_params):
     predictions = [[] for _ in range(N)]
 
     train_in, train_out = [], []
-    adapt_in, adapt_out = [], []
-    for (f, phi) in config['env_param']:
-        func = param_to_sin(f, phi)
-        base_outs.append(func(base_in))
-        x = np.random.uniform(0, 2 * pi, (config['meta_train_size'], 1))
+    for _ in range(config['total_n_tasks']):
+        a = np.random.uniform(0.1, 5)
+        phi = np.random.uniform(0, pi)
+        func = param_to_sin(a, phi)
+        x = np.random.uniform(-5, 5, (config['meta_train_size'], 1))
         train_in.append(np.copy(x))
         train_out.append(func(x))
-        x = np.random.uniform(0, 2 * pi, (config['adapt_size'], 1))
+
+    adapt_in, adapt_out = [], []
+    for (a, phi) in config['env_param']:
+        func = param_to_sin(a, phi)
+        base_outs.append(func(base_in))
+        x = np.random.uniform(-5, 5, (config['adapt_size'], 1))
         adapt_in.append(np.copy(x))
         adapt_out.append(func(x))
 
@@ -182,39 +196,48 @@ for i, config_param in enumerate(config_params):
     for task_id, m in enumerate(models):
         m.fix_task(task_id)
     for i in range(N):
+        predictions[i].append(models[i].predict_tensor_without_normalization(torch_base_in).cpu().detach().numpy())
         adapted_model, loss = train_model(model=models[i], train_in=adapt_in[i], train_out=adapt_out[i], task_id=i, config=config)
         train_loss[i] = np.copy(loss)
-        predictions[i].append(adapted_model.predict_tensor(torch_base_in).cpu().detach().numpy())
+        predictions[i].append(adapted_model.predict_tensor_without_normalization(torch_base_in).cpu().detach().numpy())
         test_loss[i] = np.mean((predictions[i][-1][:, 0] - base_outs[i]) ** 2)
 
-    """ Meta-training """
-    trained_model, meta_train_test_loss, _, _ = train_meta(model, train_in, train_out, config, order=config['order'])
+    # """ Meta-training """
+    # trained_model, meta_train_test_loss, _, _ = train_meta(model, train_in, train_out, config, order=config['order'])
+    # plt.subplots(figsize=(16, 9))
+    # if len(meta_train_test_loss[i]) == N:
+    #     for i in range(N):
+    #         plt.plot(meta_train_test_loss[i], label=str(i))
+    # else:
+    #     res = []
+    #     for i in range(config['meta_iter']):
+    #         i1 = i % config['total_n_tasks']
+    #         i2 = i//config['total_n_tasks']
+    #         res.append(meta_train_test_loss[i1][i2])
+    #     plt.plot(res)
+    # plt.yscale('log')
+    # # plt.legend()
+    # plt.xlabel("outer-loop iterations")
+    # plt.ylabel('loss')
+    # plt.title("Meta-training testing loss")
+    # plt.savefig(run_path+"/training_testing.svg")
+    # plt.close()
+    # """ Meta-adaptation """
+    # if config['meta_iter'] > 0:
+    #     models = [copy.deepcopy(trained_model) for _ in range(N)]
+    #     for i, m in enumerate(models):
+    #         m.fix_task(i)
+    #         adapted_model, loss = train_model(model=m, train_in=adapt_in[i], train_out=adapt_out[i], task_id=i,
+    #                                     config=config)
+    #         meta_test_train_loss[i] = np.copy(loss)
+    #         predictions[i].append(adapted_model.predict_tensor_without_normalization(torch_base_in).cpu().detach().numpy())
+    #         meta_test_test_loss[i] = np.mean((predictions[i][-1][:, 0] - base_outs[i]) ** 2)
+    #
+    # """ Plot """
     plt.subplots(figsize=(16, 9))
-    for i in range(N):
-        plt.plot(meta_train_test_loss[i], label=str(i))
-    plt.yscale('log')
-    plt.legend()
-    plt.xlabel("outer-loop iterations")
-    plt.ylabel('loss')
-    plt.title("Meta-training testing loss")
-    plt.savefig(run_path+"/training_testing.svg")
-    plt.close()
-    """ Meta-adaptation """
-    if config['meta_iter'] > 0:
-        models = [copy.deepcopy(trained_model) for _ in range(N)]
-        for i, m in enumerate(models):
-            m.fix_task(i)
-            adapted_model, loss = train_model(model=m, train_in=adapt_in[i], train_out=adapt_out[i], task_id=i,
-                                        config=config)
-            meta_test_train_loss[i] = np.copy(loss)
-            predictions[i].append(adapted_model.predict_tensor(torch_base_in).cpu().detach().numpy())
-            meta_test_test_loss[i] = np.mean((predictions[i][-1][:, 0] - base_outs[i]) ** 2)
-
-    """ Plot """
-    plt.subplots(figsize=(16, 9))
-    for i in range(4):
+    for i in range(len(train_loss)):
         plt.plot(train_loss[i], colors[i], lw=3, ls=":", label="before meta-learning "+str(i), alpha=0.5)
-        plt.plot(meta_test_train_loss[i], colors[i], label="after meta-learning", lw=3, alpha=0.5)
+        # plt.plot(meta_test_train_loss[i], colors[i], label="after meta-learning", lw=3, alpha=0.5)
     plt.yscale('log')
     plt.xlabel("adaptation iterations")
     plt.ylabel('loss')
@@ -226,9 +249,10 @@ for i, config_param in enumerate(config_params):
     for i, base_out in enumerate(base_outs):
         plt.plot(base_in, base_out, colors[i], label="base " + str(i), lw=3)
         plt.scatter(adapt_in[i], adapt_out[i], marker="o", s=100, c=colors[i])
-        plt.plot(base_in, predictions[i][0], ls=":", c=colors[i], label="without meta-learning")
-        if config['meta_iter'] > 0:
-            plt.plot(base_in, predictions[i][1], ls="--", lw=3, c=colors[i], label="with meta-learning")
+        plt.plot(base_in, predictions[i][0], ls=":", c=colors[i], label="init model")
+        plt.plot(base_in, predictions[i][1], ls=":", c=colors[i], label="adaptation without meta-learning")
+        # if config['meta_iter'] > 0:
+        #     plt.plot(base_in, predictions[i][1], ls="--", lw=3, c=colors[i], label="with meta-learning")
 
     plt.legend()
     plt.xlabel("input")
@@ -236,18 +260,18 @@ for i, config_param in enumerate(config_params):
     plt.title('Regression after adaptation with and without meta-learning')
     plt.savefig(run_path+"/regression.svg")
     plt.close()
-    """ Saving logs """
-    log = dict()
-    log['base_in'] = base_in
-    log['base_out'] = base_out
-    log['adapt_in'] = adapt_in
-    log['adapt_out'] = adapt_out
-    log['predictions'] = predictions
-    log['train_loss'] = train_loss
-    log['meta_test_train_loss'] = meta_test_train_loss
-    log['meta_test_test_loss'] = meta_test_test_loss
-    log['meta_train_test_loss'] = meta_train_test_loss
-
-    with open(run_path + '/logs.pk', 'wb') as f:
-        pickle.dump(log, f)
-    trained_model.save(file_path=run_path + "/meta_model.pt")
+    # """ Saving logs """
+    # log = dict()
+    # log['base_in'] = base_in
+    # log['base_outs'] = base_outs
+    # log['adapt_in'] = adapt_in
+    # log['adapt_out'] = adapt_out
+    # log['predictions'] = predictions
+    # log['train_loss'] = train_loss
+    # log['meta_test_train_loss'] = meta_test_train_loss
+    # log['meta_test_test_loss'] = meta_test_test_loss
+    # log['meta_train_test_loss'] = meta_train_test_loss
+    #
+    # with open(run_path + '/logs.pk', 'wb') as f:
+    #     pickle.dump(log, f)
+    # trained_model.save(file_path=run_path + "/meta_model.pt")
