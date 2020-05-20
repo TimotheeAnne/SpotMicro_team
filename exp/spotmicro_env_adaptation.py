@@ -841,7 +841,7 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "record_video": 1,
+    "record_video": 0,
     "video_recording_frequency": 50,
     "result_dir": "results",
     "env_name": "spot_micro_05",
@@ -961,19 +961,19 @@ config_params = []
 attributes = [['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
               ]
 
-# for attribute in attributes:
-#     config_params.append({'obs_attributes': attribute})
+for _ in range(4):
+    config_params.append({})
 
 
-path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
-runs = ['0', '1', '2', '3', '4']
-
-for i in range(len(test_mismatches)):
-    for j in range(len(runs)):
-        config_params.append({
-            'pretrained_model': [path + str(j) + "/run_5"],
-            "online_experts": [0],
-            'test_mismatches': [([0], [test_mismatches[i]])]})
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
+# runs = ['1']
+#
+# for i in range(len(test_mismatches)):
+#     for j in range(len(runs)):
+#         config_params.append({
+#             'pretrained_model': [path + str(runs[j]) + "/run_5"],
+#             "online_experts": [0],
+#             'test_mismatches': [([0], [test_mismatches[i]])]})
 
 
 def apply_config_params(conf, params):
@@ -1041,7 +1041,6 @@ else:
             current_mismatches = mismatches if run_mismatches is None else run_mismatches[run]
             main(gym_args=args, gym_kwargs=kwargs, mismatches=current_mismatches, config=conf)
             exp_dir = conf['exp_dir']
-
             if run == 0:
                 with open(exp_dir + "/config.txt", "w") as f:
                     f.write(str(config_params))
