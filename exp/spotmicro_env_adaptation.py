@@ -812,7 +812,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 20,
+    "test_iterations": 5,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -947,7 +947,7 @@ mismatches = [
     {'friction': 0.2},
 ]
 
-test_mismatches = None
+test_mismatches = [{'friction': 0.2}]
 
 config['test_mismatches'] = test_mismatches
 
@@ -958,31 +958,22 @@ run_mismatches = None
 
 config['exp_suffix'] = "obs_attributes"
 config_params = []
-# attributes = [['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-#               ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot'],
-#               ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot'],
-#               ['q', 'qdot', 'rpy', 'rpydot', 'xdot'],
-#               ['q', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-#               ['q', 'qdot', 'rpydot', 'z', 'xdot', 'ydot'],
-#               ['q', 'qdot', 'rpy', 'z', 'xdot', 'ydot'],
-#               ['qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
-#               ['q', 'qdot', 'rpy', 'rpydot', 'zdot', 'xdot', 'y'],
-#               ['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'y'],
-#               ]
+attributes = [['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+              ]
 
-for _ in range(4):
-    config_params.append({})
+# for attribute in attributes:
+#     config_params.append({'obs_attributes': attribute})
 
 
-# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_0"
-# runs = ['0', '1', '2', '3', '4']
-#
-# for i in range(len(test_mismatches)):
-#     for j in range(len(runs)):
-#         config_params.append({
-#             'pretrained_model': [path + "/run_"+runs[j]],
-#             "online_experts": [0],
-#             'test_mismatches': [([0], [test_mismatches[i]])]})
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
+runs = ['0', '1', '2', '3', '4']
+
+for i in range(len(test_mismatches)):
+    for j in range(len(runs)):
+        config_params.append({
+            'pretrained_model': [path + str(j) + "/run_5"],
+            "online_experts": [0],
+            'test_mismatches': [([0], [test_mismatches[i]])]})
 
 
 def apply_config_params(conf, params):
