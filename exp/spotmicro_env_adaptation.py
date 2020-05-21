@@ -852,7 +852,7 @@ config = {
     "data_dir": "",
     "logdir": None,
     "pretrained_model": None,
-    "online_experts": None,
+    "online_experts": [0],
 
     # Ensemble model params
     "cuda": True,
@@ -947,7 +947,9 @@ mismatches = [
     {'friction': 0.2},
 ]
 
-test_mismatches = [{'friction': 0.2}]
+test_mismatches = [
+                    [[0], [{'friction': 0.2}]]
+]
 
 config['test_mismatches'] = test_mismatches
 
@@ -961,7 +963,7 @@ config_params = []
 attributes = [['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
               ]
 
-for _ in range(4):
+for _ in range(3):
     config_params.append({})
 
 
