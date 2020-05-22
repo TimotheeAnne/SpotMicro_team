@@ -812,7 +812,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 5,
+    "test_iterations": 3,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -825,7 +825,7 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "yreward": 1,
@@ -947,9 +947,7 @@ mismatches = [
     {'friction': 0.2},
 ]
 
-test_mismatches = [
-                    [[0], [{'friction': 0.2}]]
-]
+test_mismatches = []
 
 config['test_mismatches'] = test_mismatches
 
@@ -958,24 +956,31 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "obs_attributes"
+config['exp_suffix'] = "frictions"
 config_params = []
-attributes = [['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
-              ]
 
-for _ in range(3):
-    config_params.append({})
+mismatches = [
+    {'friction': 0.2},
+    {'friction': 0.4},
+    {'friction': 0.6},
+]
+run_mismatches = []
+for mismatch in mismatches:
+    for _ in range(5):
+        run_mismatches.append([mismatch])
+        config_params.append({})
 
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
-# runs = ['1']
+# runs = ['0', '1', '2', '3', '4']
 #
 # for i in range(len(test_mismatches)):
 #     for j in range(len(runs)):
 #         config_params.append({
-#             'pretrained_model': [path + str(runs[j]) + "/run_5"],
+#             'pretrained_model': [path + str(runs[j]) +"/run_5" ],
 #             "online_experts": [0],
-#             'test_mismatches': [([0], [test_mismatches[i]])]})
+#             'test_mismatches': [([0], [{'friction': 0.2}])]
+#         })
 
 
 def apply_config_params(conf, params):
