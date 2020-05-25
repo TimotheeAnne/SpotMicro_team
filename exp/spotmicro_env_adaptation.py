@@ -140,8 +140,8 @@ class Cost(object):
                     all_costs[start_index: end_index] += -torch.exp(-zdot_cost) * self.__discount ** h
                 if 'rpy' in self.__obs_at:
                     roll_cost = (start_states[:, self.__obs_at_ind['rpy']]) ** 2 * self.__rollreward
-                    pitch_cost = (start_states[:, self.__obs_at_ind['rpy']+1]) ** 2 * self.__pitchreward
-                    yaw_cost = (start_states[:, self.__obs_at_ind['rpy']+2]) ** 2 * self.__yawreward
+                    pitch_cost = (start_states[:, self.__obs_at_ind['rpy'] + 1]) ** 2 * self.__pitchreward
+                    yaw_cost = (start_states[:, self.__obs_at_ind['rpy'] + 2]) ** 2 * self.__yawreward
                     all_costs[start_index: end_index] += -torch.exp(-yaw_cost) * self.__discount ** h \
                                                          + -torch.exp(-pitch_cost) * self.__discount ** h \
                                                          + -torch.exp(-roll_cost) * self.__discount ** h
@@ -812,7 +812,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 3,
+    "test_iterations": 4,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -841,7 +841,7 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 50,
     "result_dir": "results",
     "env_name": "spot_micro_05",
@@ -970,17 +970,18 @@ for mismatch in mismatches:
         run_mismatches.append([mismatch])
         config_params.append({})
 
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+runs = ['0', '1', '2', '3', '4']
+frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
 
-# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
-# runs = ['0', '1', '2', '3', '4']
-#
-# for i in range(len(test_mismatches)):
-#     for j in range(len(runs)):
-#         config_params.append({
-#             'pretrained_model': [path + str(runs[j]) +"/run_5" ],
-#             "online_experts": [0],
-#             'test_mismatches': [([0], [{'friction': 0.2}])]
-#         })
+for run in runs:
+    for expert in range(3):
+        for friction in frictions:
+            config_params.append({
+                'pretrained_model': [path + run + "/run_" + str(expert)],
+                "online_experts": [0],
+                'test_mismatches': [([0], [{'friction': friction}])]
+            })
 
 
 def apply_config_params(conf, params):
