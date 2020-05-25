@@ -944,7 +944,7 @@ for (key, val) in arguments.config:
         config[key] = float(val)
 
 mismatches = [
-    {'friction': 0.2},
+    {},
 ]
 
 test_mismatches = []
@@ -959,16 +959,16 @@ run_mismatches = None
 config['exp_suffix'] = "frictions"
 config_params = []
 
-mismatches = [
-    {'friction': 0.2},
-    {'friction': 0.4},
-    {'friction': 0.6},
-]
-run_mismatches = []
-for mismatch in mismatches:
-    for _ in range(5):
-        run_mismatches.append([mismatch])
-        config_params.append({})
+# mismatches = [
+#     {'friction': 0.2},
+#     {'friction': 0.4},
+#     {'friction': 0.6},
+# ]
+# run_mismatches = []
+# for mismatch in mismatches:
+#     for _ in range(5):
+#         run_mismatches.append([mismatch])
+#         config_params.append({})
 
 path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
 runs = ['0', '1', '2', '3', '4']
