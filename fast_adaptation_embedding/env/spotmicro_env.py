@@ -519,16 +519,7 @@ class SpotMicroEnv(gym.Env):
                 self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
                                                        rgbaColor=MOTORS_COLORS[motor])
 
-        if self.lateral_friction > 0.8:
-            friction_level = "striped"
-        elif self.lateral_friction == 0.8:
-            friction_level = "checker_blue"
-        elif self.lateral_friction <= 0.2:
-            friction_level = "checker_red"
-        else:
-            friction_level = "checker_purple"
         self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction+0.2, self.lateral_friction+0.2, 1])
-        # self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
@@ -637,7 +628,7 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'friction': 0.1})
+        env.set_mismatch({'friction': 0.8})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
@@ -662,7 +653,7 @@ if __name__ == "__main__":
         actions = None
         # actions = data['actions'][0][250]
 
-        degree = 3
+        degree = 0
         # t = trange(3, 500 + 3, desc='', leave=True)
         t = range(3, 20 + 3)
         for i in t:
@@ -694,7 +685,7 @@ if __name__ == "__main__":
                               axis=0)
                 amax, amin = np.clip(amax, lb, ub), np.clip(amin, lb, ub)
             x = np.random.uniform(amin, amax)
-            x = past[-1]
+            # x = past[-1]
             # x[:6] = past[-1][:6]
             action = np.copy(x)
             if actions is not None:
