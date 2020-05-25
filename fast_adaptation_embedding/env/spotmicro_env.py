@@ -527,7 +527,8 @@ class SpotMicroEnv(gym.Env):
             friction_level = "checker_red"
         else:
             friction_level = "checker_purple"
-        self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
+        self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction+0.2, self.lateral_friction+0.2, 1])
+        # self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/" + friction_level + ".png")
         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
@@ -636,13 +637,13 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'faulty_motors': [10], 'faulty_joints': [1.3]})
+        env.set_mismatch({'friction': 0.1})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
 
         # recorder = None
-        recorder = VideoRecorder(env, "test.mp4")
+        recorder = VideoRecorder(env, "test2.mp4")
 
         ub = 1
         lb = -1
@@ -663,7 +664,7 @@ if __name__ == "__main__":
 
         degree = 3
         # t = trange(3, 500 + 3, desc='', leave=True)
-        t = range(3, 500 * 4 + 3)
+        t = range(3, 20 + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
