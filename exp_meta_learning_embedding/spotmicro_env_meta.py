@@ -21,7 +21,7 @@ from fast_adaptation_embedding.controllers.random_shooting import RS_opt
 
 
 class Cost(object):
-    def __init__(self, model, init_state, horizon, action_dim, goal, config, last_action,
+    def __init__(self, model, init_state, horizon, action_dim, goal, config, last_action, obs_attributes_index,
                  task_likelihoods, speed=None):
         self.__models = model
         self.__init_state = init_state
@@ -33,6 +33,7 @@ class Cost(object):
         self.__batch_size = config['ensemble_batch_size']
         self.__xreward = config['xreward']
         self.__zreward = config['zreward']
+        self.__yreward = config['yreward']
         self.__rollreward = config['rollreward']
         self.__pitchreward = config['pitchreward']
         self.__yawreward = config['yawreward']
@@ -55,6 +56,8 @@ class Cost(object):
         self.__action_space = config['action_space']
         self.__ctrl_time_step = config['ctrl_time_step']
         self.__task_likelihoods = task_likelihoods
+        self.__obs_at_ind = obs_attributes_index
+        self.__obs_at = config['obs_attributes']
 
     def cost_fn(self, samples):
         a = torch.FloatTensor(samples).cuda() \
@@ -114,12 +117,28 @@ class Cost(object):
                 model_input = torch.cat((start_states, actions), dim=1)
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
-                x_vel_cost = (start_states[:, 30] - self.__desired_speed) ** 2 * self.__xreward
-                z_cost = (start_states[:, -1] - 0.1855) ** 2 * self.__zreward
-                roll_cost = (start_states[:, 24]) ** 2 * self.__rollreward
-                pitch_cost = (start_states[:, 25]) ** 2 * self.__pitchreward
-                yaw_cost = (start_states[:, 26]) ** 2 * self.__yawreward
-
+                # necessary to move forwards
+                x_vel_cost = (start_states[:, self.__obs_at_ind['xdot']] - self.__desired_speed) ** 2 * self.__xreward
+                # not 'necessary?' rewards
+                if 'ydot' in self.__obs_at:
+                    y_vel_cost = (start_states[:, self.__obs_at_ind['ydot']]) ** 2 * self.__yreward
+                    all_costs[start_index: end_index] += -torch.exp(-y_vel_cost) * self.__discount ** h
+                if 'y' in self.__obs_at:
+                    y_cost = (start_states[:, self.__obs_at_ind['y']]) ** 2 * self.__yreward
+                    all_costs[start_index: end_index] += -torch.exp(-y_cost) * self.__discount ** h
+                if 'z' in self.__obs_at:
+                    z_cost = (start_states[:, self.__obs_at_ind['z']] - 0.1855) ** 2 * self.__zreward
+                    all_costs[start_index: end_index] += -torch.exp(-z_cost) * self.__discount ** h
+                if 'zdot' in self.__obs_at:
+                    zdot_cost = (start_states[:, self.__obs_at_ind['zdot']] - 0.1855) ** 2 * self.__zreward
+                    all_costs[start_index: end_index] += -torch.exp(-zdot_cost) * self.__discount ** h
+                if 'rpy' in self.__obs_at:
+                    roll_cost = (start_states[:, self.__obs_at_ind['rpy']]) ** 2 * self.__rollreward
+                    pitch_cost = (start_states[:, self.__obs_at_ind['rpy'] + 1]) ** 2 * self.__pitchreward
+                    yaw_cost = (start_states[:, self.__obs_at_ind['rpy'] + 2]) ** 2 * self.__yawreward
+                    all_costs[start_index: end_index] += -torch.exp(-yaw_cost) * self.__discount ** h \
+                                                         + -torch.exp(-pitch_cost) * self.__discount ** h \
+                                                         + -torch.exp(-roll_cost) * self.__discount ** h
                 if self.__soft_smoothing:
                     action_norm_cost = torch.sum(-torch.exp(-self.__action_norm_w * (
                         action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]) ** 2))
@@ -145,16 +164,12 @@ class Cost(object):
                                                    (h - 3) * self.__action_dim: (h - 2) * self.__action_dim]) ** 2)
                     all_costs[start_index: end_index] += torch.sum(action_jerk_cost, axis=1) * self.__discount ** h
 
-                all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h \
-                                                     + -torch.exp(-yaw_cost) * self.__discount ** h \
-                                                     + -torch.exp(-pitch_cost) * self.__discount ** h \
-                                                     + -torch.exp(-roll_cost) * self.__discount ** h \
-                                                     + -torch.exp(-z_cost) * self.__discount ** h
+                all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h
 
-        if self.__hard_smoothing:
-            return a[torch.argmin(all_costs)].cpu().detach().numpy()
-        else:
-            return a[torch.argmin(all_costs)].cpu().detach().numpy()
+            if self.__hard_smoothing:
+                return a[torch.argmin(all_costs)].cpu().detach().numpy()
+            else:
+                return a[torch.argmin(all_costs)].cpu().detach().numpy()
 
 
 def train_meta(tasks_in, tasks_out, config, valid_in=[], valid_out=[]):
@@ -229,7 +244,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         cost_object = Cost(model=model, init_state=current_state, horizon=config["horizon"],
                            action_dim=env.action_space.shape[0], goal=config["goal"],
                            config=config, last_action=virtual_acs, speed=None,
-                           task_likelihoods=task_likelihoods)
+                           task_likelihoods=task_likelihoods, obs_attributes_index=env.obs_attributes_index)
 
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
@@ -270,7 +285,7 @@ def execute_online(env, steps, model, config, task_likelihoods, K, samples,
         cost_object = Cost(model=model, init_state=current_state, horizon=config["horizon"],
                            action_dim=env.action_space.shape[0], goal=config["goal"],
                            config=config, last_action=virtual_acs, speed=None,
-                           task_likelihoods=task_likelihoods)
+                           task_likelihoods=task_likelihoods, obs_attributes_index=env.obs_attributes_index)
 
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
@@ -361,6 +376,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     '''---------Prepare the test environment---------------'''
     env = gym.make(*gym_args, **gym_kwargs)
     list_data_dir = os.listdir(config["data_dir"])
+    x_index = env.obs_attributes_index['xdot']
     if config['training_tasks_index'] is None:
         n_training_tasks = 0
         for name in list_data_dir:
@@ -509,7 +525,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
             if (len(samples['reward'])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
-            best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, -3]) * 0.02)
+            best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, x_index]) * 0.02)
             tbar.set_description(
                 ("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(-np.inf)) +
                 " Distance " + str(int(100 * best_distance) / 100))
@@ -544,7 +560,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             samples['likelihood'].append(np.copy(task_likelihoods))
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
-            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, -3]) * 0.02)
+            best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * 0.02)
             tbar.set_description(
                 ("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(-np.inf)) +
                 " Distance " + str(int(100 * best_distance) / 100) +
@@ -613,9 +629,11 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same control1ler
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
+    "yreward": 1,
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
@@ -645,8 +663,8 @@ config = {
     "logdir": None,
 
     # Model_parameters
-    "dim_in": 33 + 12,
-    "dim_out": 33,
+    "dim_in": 32 + 12,
+    "dim_out": 32,
     "hidden_layers": [256, 256],
     "embedding_size": 5,
     "cuda": True,
@@ -759,6 +777,16 @@ args = ["SpotMicroEnv-v0"]
 
 def check_config(config):
     config['sol_dim'] = config['horizon'] * config['action_dim']
+    obs_dim = 0
+    for attribute in config['obs_attributes']:
+        if attribute in ['q', 'qdot']:
+            obs_dim += 12
+        elif attribute in ['rpy', 'rpydot']:
+            obs_dim += 3
+        elif attribute in ['x', 'y', 'z', 'xdot', 'ydot', 'zdot']:
+            obs_dim += 1
+    config["ensemble_dim_in"] = obs_dim + 12
+    config["ensemble_dim_out"] = obs_dim
 
 
 def env_args_from_config(config):
@@ -779,6 +807,7 @@ def env_args_from_config(config):
         "ub": np.array(config["real_ub"]),
         "lb": np.array(config["real_lb"]),
         "normalized_action": True,
+        "obs_attributes": config['obs_attributes'],
     }
 
 
@@ -811,7 +840,7 @@ config_params = []
 adapt_steps = [50]
 embedding_sizes = [10]
 epochs = [20]
-data_dirs = ['0', '1', '2', '3', '4']
+data_dirs = ['0']
 frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
