@@ -597,7 +597,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 10,
+    "iterations": 4,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -801,12 +801,8 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    ([0], [{'faulty_motors': [4], 'faulty_joints': [0]}]),
-    ([0], [{'faulty_motors': [5], 'faulty_joints': [-1]}]),
-    ([0], [{'faulty_motors': [10], 'faulty_joints': [1]}]),
-    ([0], [{'faulty_motors': [11], 'faulty_joints': [0]}]),
     ([0], [{'friction': 0.2}]),
-    ([0], [{'friction': 0.2, 'faulty_motors': [4], 'faulty_joints': [0]}]),
+
 ]
 
 test_mismatches = []
@@ -816,17 +812,18 @@ adapt_steps = [50]
 embedding_sizes = [10]
 epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
+frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
-            for i in range(len(mismatches)):
+            for friction in frictions:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "damaged&friction_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
-                         'training_tasks_index': [0, 1, 2, 3, 4, 5], 'online': True, 'start_from_raw': i,
-                         "data_dir": "data/spotmicro/4_motor_damaged_" + data_dir})
-                    test_mismatches.append(mismatches[i])
+                         "meta_model_name": "frictions3_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
+                         'training_tasks_index': [0, 1, 2], 'online': True, 'start_from_raw': True,
+                         "data_dir": "data/spotmicro/frictions3_run" + data_dir})
+                    test_mismatches.append(([0], [{'friction': friction}]))
 
 n_run = len(config_params)
 exp_dir = None
