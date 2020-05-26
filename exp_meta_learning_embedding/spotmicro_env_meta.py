@@ -840,7 +840,7 @@ config_params = []
 adapt_steps = [50]
 embedding_sizes = [10]
 epochs = [20]
-data_dirs = ['0']
+data_dirs = ['0', '1', '2', '3', '4']
 frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
