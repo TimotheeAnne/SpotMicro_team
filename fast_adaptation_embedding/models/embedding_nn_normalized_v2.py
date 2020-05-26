@@ -110,6 +110,19 @@ class Embedding_NN(nn.Module):
         else:
             return (self.forward(x_normalized, None) * self.data_std_output + self.data_mean_output).detach()
 
+    def predict_tensor_without_normalization(self, x, task_ids=None):
+        '''Use predict methods when not optimizing the model'''
+        x_normalized = x
+        if task_ids is not None:
+            return self.forward(x_normalized, task_ids).detach()
+        elif self.embedding_dim > 0:
+            tensor_shape = (x.size(0), 1)
+            task_ids = torch.LongTensor(np.ones(tensor_shape) * self._fixed_task_id).cuda() if self.cuda_enabled \
+                else torch.LongTensor(np.ones(tensor_shape) * self._fixed_task_id)
+            return self.forward(x_normalized, task_ids).detach()
+        else:
+            return self.forward(x_normalized, None).detach()
+
     def loss_function(self, y, y_pred):
         ''' y and y-pred must be normalized'''
         SE = (y - y_pred).pow(2).sum()
@@ -283,7 +296,125 @@ def train_meta(model, tasks_in, tasks_out, valid_in=[], valid_out=[],
         return Task_losses, Valid_losses, None
 
 
-def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_step=1e-3, meta_step=1e-3, K=32, M=32):
+def train_meta1(model, tasks_in, tasks_out, normalization=True, meta_iter=1000, inner_iter=10,
+               inner_step=1e-3, meta_step=1e-3, minibatch=32, inner_sample_size=None, inner_optimizer_name='Adam',
+               validation_frequency=100, valid_in=None, valid_out=None, valid_test_in=None, valid_epoch=10):
+    """
+    model: Instance of Embedding_NN,
+    tasks_in: list of input data for each task
+    tasks_out: list of input data for each task
+    meta_iter: Outer loop (meta update) count
+    inner_iter: inner loop (task update) count
+    inner_step: inner loop step size
+    meta_step: outer loop step size
+    minibatch: inner loop minibatch
+    inner_sample_size: Inner loop sampling size. Samples the data and train on that data only per meta update.
+    """
+
+    if normalization:
+        all_data_in = []
+        all_data_out = []
+        for task_id in range(len(tasks_in)):
+            for i in range(len(tasks_in[task_id])):
+                all_data_in.append(tasks_in[task_id][i])
+                all_data_out.append(tasks_out[task_id][i])
+
+        model.data_mean_input = torch.Tensor(np.mean(all_data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_in, axis=0))
+        model.data_mean_output = torch.Tensor(np.mean(all_data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_out, axis=0))
+        model.data_std_input = torch.Tensor(np.std(all_data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_in, axis=0)) + 1e-10
+        model.data_std_output = torch.Tensor(np.std(all_data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_out, axis=0)) + 1e-10
+
+        xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
+        yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
+
+        tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
+        tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
+    else:
+        tasks_in_tensor = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
+        tasks_out_tensor = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
+
+    with_validation = (valid_in is not None and valid_out is not None and valid_test_in is not None)
+    if with_validation:
+        valid_test_xx = torch.Tensor(valid_test_in).cuda() if model.cuda_enabled else torch.Tensor(valid_test_in)
+        valid_test_in_tensor = [(d - model.data_mean_output) / model.data_std_output for d in valid_test_xx] if normalization else valid_test_xx
+        valid_prediction_before = [[] for _ in range(len(valid_in))]
+        valid_prediction_after = [[] for _ in range(len(valid_in))]
+    else:
+        valid_prediction_before, valid_prediction_after = None, None
+    task_losses = np.zeros(len(tasks_in))
+    Task_losses = [[] for _ in range(len(tasks_in))]
+    if model.embedding_dim > 0:
+        saved_embeddings = torch.empty((int(meta_iter / len(tasks_in)) + 1, len(tasks_in), model.embedding_dim))
+        saved_embeddings[0] = deepcopy(model.embeddings.weight)
+
+    inner_optimizer = optim.Adam(model.parameters(), lr=inner_step) if inner_optimizer_name == 'Adam' else None
+    tbar = tqdm(range(meta_iter))
+    for meta_count in tbar:
+        weights_before = deepcopy(model.state_dict())
+        task_index = int(meta_count % len(tasks_in))
+        batch_size = len(tasks_in[task_index]) if minibatch > len(tasks_in[task_index]) else minibatch
+        tasks_tensor = torch.LongTensor([[task_index] for _ in range(batch_size)]).cuda() if model.cuda_enabled else torch.LongTensor([[task_index] for _ in range(batch_size)])
+        final_loss = []
+        for _ in range(inner_iter):
+            permutation = np.random.permutation(
+                len(tasks_in[task_index])) if inner_sample_size is None else np.random.permutation(
+                len(tasks_in[task_index]))[0: min(inner_sample_size, len(tasks_in[task_index]))]
+            x = tasks_in_tensor[task_index][permutation]
+            y = tasks_out_tensor[task_index][permutation]
+            final_loss = []
+
+            model.train(mode=True)
+            if inner_optimizer is not None:
+                for i in range(0, x.size(0) - batch_size + 1, batch_size):
+                    model.zero_grad()
+                    pred = model(x[i:i + batch_size], tasks_tensor)
+                    loss = model.loss_function(pred, y[i:i + batch_size])
+                    loss.backward()
+                    inner_optimizer.step()
+                    final_loss.append(loss.item() / batch_size)
+            else:
+                for i in range(0, x.size(0) - batch_size + 1, batch_size):
+                    model.zero_grad()
+                    pred = model(x[i:i + batch_size], tasks_tensor)
+                    loss = model.loss_function(pred, y[i:i + batch_size])
+                    loss.backward()
+                    for param in model.parameters():
+                        param.data -= inner_step * param.grad.data
+                    final_loss.append(loss.item() / batch_size)
+
+        """ validation = meta-testing-training + meta_testing-testing """
+        if with_validation and ((meta_count % validation_frequency == 0) or (meta_count == meta_iter-1)):
+            models = [deepcopy(model) for _ in range(len(valid_in))]
+            for task_id, m in enumerate(models):
+                m.fix_task(task_id)
+            for i in range(len(valid_in)):
+                valid_prediction_before[i].append(models[i].predict_tensor_without_normalization(valid_test_in_tensor).cpu().detach().numpy())
+                _ = train(model=models[i], data_in=valid_in[i], data_out=valid_out[i], task_id=i, inner_iter=valid_epoch, inner_lr=inner_step, inner_optimizer=inner_optimizer_name, normalization=normalization)
+                valid_prediction_after[i].append(models[i].predict_tensor_without_normalization(valid_test_in_tensor).cpu().detach().numpy())
+
+        task_losses[task_index] = np.mean(final_loss)
+        Task_losses[task_index].append(np.mean(final_loss))
+
+        tbar.set_description("training " + str(task_losses[task_index]))
+
+        model.train(mode=False)
+        weights_after = model.state_dict()
+        stepsize = meta_step * (1 - meta_count / meta_iter)  # linear schedule
+        model.load_state_dict(
+            {name: weights_before[name] + (weights_after[name] - weights_before[name]) * stepsize for name in
+             weights_before})
+        if model.embedding_dim > 0 and (meta_count + 1) % len(tasks_in) == 0:
+            saved_embeddings[int((meta_count + 1) / len(tasks_in))] = deepcopy(model.embeddings.weight)
+    if model.embedding_dim > 0:
+        return Task_losses, (valid_prediction_before, valid_prediction_after), saved_embeddings.detach().cpu().numpy()
+    else:
+        return Task_losses, (valid_prediction_before, valid_prediction_after), None
+
+
+def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner_step=1e-3, meta_step=1e-3, K=32, M=32,
+                inner_optimizer_name='Adam', outer_optimizer='Adam', normalization=True, inner_n_tasks=1,
+                linear_schedule=True, validation_frequency=100, valid_in=None, valid_out=None,
+                valid_test_in=None, valid_epoch=10):
     """
     meta-training with second order optimization
 
@@ -297,40 +428,57 @@ def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner
     M: number of samples to adapt the model (meta-training training)
     K: number of samples to evaluate the model for the meta-loss (meta-training testing)
     """
+    if normalization:
+        all_data_in = []
+        all_data_out = []
+        for task_id in range(len(tasks_in)):
+            for i in range(len(tasks_in[task_id])):
+                all_data_in.append(tasks_in[task_id][i])
+                all_data_out.append(tasks_out[task_id][i])
 
-    all_data_in = []
-    all_data_out = []
-    for task_id in range(len(tasks_in)):
-        for i in range(len(tasks_in[task_id])):
-            all_data_in.append(tasks_in[task_id][i])
-            all_data_out.append(tasks_out[task_id][i])
+        model.data_mean_input = torch.Tensor(np.mean(all_data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_in, axis=0))
+        model.data_mean_output = torch.Tensor(np.mean(all_data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_out, axis=0))
+        model.data_std_input = torch.Tensor(np.std(all_data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_in, axis=0)) + 1e-10
+        model.data_std_output = torch.Tensor(np.std(all_data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_out, axis=0)) + 1e-10
 
-    model.data_mean_input = torch.Tensor(np.mean(all_data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_in, axis=0))
-    model.data_mean_output = torch.Tensor(np.mean(all_data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(np.mean(all_data_out, axis=0))
-    model.data_std_input = torch.Tensor(np.std(all_data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_in, axis=0)) + 1e-10
-    model.data_std_output = torch.Tensor(np.std(all_data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(np.std(all_data_out, axis=0)) + 1e-10
+        xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
+        yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
 
-    xx = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
-    yy = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
+        tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
+        tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
+    else:
+        tasks_in_tensor = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_in]
+        tasks_out_tensor = [torch.Tensor(data).cuda() if model.cuda_enabled else torch.Tensor(data) for data in tasks_out]
 
-    tasks_in_tensor = [(d - model.data_mean_input) / model.data_std_input for d in xx]
-    tasks_out_tensor = [(d - model.data_mean_output) / model.data_std_output for d in yy]
+    task_losses = np.zeros(inner_n_tasks)
+    Task_losses = [[] for _ in range(inner_n_tasks)]
 
-    task_losses = np.zeros(len(tasks_in))
-    Task_losses = [[] for _ in range(len(tasks_in))]
+    if valid_in is not None and valid_out is not None and valid_test_in is not None:
+        valid_prediction_before = [[] for _ in range(len(valid_in))]
+        valid_prediction_after = [[] for _ in range(len(valid_in))]
+        valid_test_xx = torch.Tensor(valid_test_in).cuda() if model.cuda_enabled else torch.Tensor(valid_test_in)
+        valid_test_in_tensor = [(d - model.data_mean_output) / model.data_std_output for d in valid_test_xx] if normalization else valid_test_xx
+    else:
+        valid_prediction_before, valid_prediction_after = None, None
 
     if model.embedding_dim > 0:
         saved_embeddings = torch.empty((meta_iter+1, len(tasks_in), model.embedding_dim))
         saved_embeddings[0] = deepcopy(model.embeddings.weight)
+    if inner_optimizer_name == 'Adam':
+        inner_optimizer = torch.optim.Adam
+    else:
+        inner_optimizer = torch.optim.SGD
 
     """ Meta-training """
     as_nan = False
+    Grad_norm = []
     tbar = tqdm(range(meta_iter))
     for meta_count in tbar:
-        outer_grad = [None for _ in range(len(tasks_in))]
-        for task_index in range(len(tasks_in)):
+        outer_grad = [None for _ in range(inner_n_tasks)]
+        tasks_indexes = np.random.permutation(np.arange(len(tasks_in)))[:inner_n_tasks]
+        for i, task_index in enumerate(tasks_indexes):
             learner = deepcopy(model)
-            opt = torch.optim.Adam(learner.parameters(), lr=inner_step)
+            opt = inner_optimizer(learner.parameters(), lr=inner_step)
             with higher.innerloop_ctx(learner, opt) as (fmodel, diffopt):
                 """ Selection of the M+K samples for the current task"""
                 N = len(tasks_in_tensor[task_index])
@@ -350,58 +498,79 @@ def train_meta2(model, tasks_in, tasks_out, meta_iter=1000, inner_iter=10, inner
                 pred = fmodel(x[M:], tasks_tensor[M:])
                 testing_loss = fmodel.loss_function(pred, y[M:])
                 """ Saving meta-loss on current task """
-                outer_grad[task_index] = torch.autograd.grad(testing_loss, fmodel.parameters(time=0))
+                outer_grad[i] = torch.autograd.grad(testing_loss, fmodel.parameters(time=0))
 
-            task_losses[task_index] = testing_loss.detach().cpu().numpy()/K
-            Task_losses[task_index].append(testing_loss.detach().cpu().numpy()/K)
+            task_losses[i] = testing_loss.detach().cpu().numpy()/K
+            Task_losses[i].append(testing_loss.detach().cpu().numpy()/K)
             if np.isnan(task_losses[0]):
                 as_nan = True
                 break
         if as_nan:
             break
-        tbar.set_description("training " + str(task_losses))
+
         """ outer-loop update """
+        outer_step = meta_step * (1-meta_count/meta_iter) if linear_schedule else meta_step
+
+        grad_norm = torch.tensor(0.)
         for i, param in enumerate(model.parameters()):
             for j in range(len(outer_grad)):
-                param.data -= meta_step * outer_grad[j][i]
+                grad_norm += torch.norm(outer_grad[j][i])
+                param.data -= outer_step * outer_grad[j][i]/inner_n_tasks
 
+        tbar.set_description("training " + str(np.mean(task_losses)) + "- grad " + str(grad_norm))
+        Grad_norm.append(grad_norm.detach().cpu().numpy())
         if model.embedding_dim > 0:
             saved_embeddings[meta_count+1] = deepcopy(model.embeddings.weight)
 
+        """ validation = meta-testing-training + meta_testing-testing """
+        if valid_in is not None and valid_out is not None and valid_test_in is not None and ((meta_count % validation_frequency == 0) or (meta_count == meta_iter-1)):
+            models = [deepcopy(model) for _ in range(len(valid_in))]
+            for task_id, m in enumerate(models):
+                m.fix_task(task_id)
+            for i in range(len(valid_in)):
+                valid_prediction_before[i].append(models[i].predict_tensor_without_normalization(valid_test_in_tensor).cpu().detach().numpy())
+                _ = train(model=models[i], data_in=valid_in[i], data_out=valid_out[i], task_id=i, inner_iter=valid_epoch, inner_lr=inner_step, inner_optimizer=inner_optimizer_name, normalization=normalization)
+                valid_prediction_after[i].append(models[i].predict_tensor_without_normalization(valid_test_in_tensor).cpu().detach().numpy())
+
     if model.embedding_dim > 0:
-        return Task_losses, None,  saved_embeddings.detach().cpu().numpy()
+        return Task_losses, (valid_prediction_before, valid_prediction_after),  saved_embeddings.detach().cpu().numpy(), as_nan, Grad_norm
     else:
-        return Task_losses, None, None
+        return Task_losses, (valid_prediction_before, valid_prediction_after), None, as_nan, Grad_norm
 
 
-def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, optimizer=None):
+def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, minibatch=32, inner_optimizer='Adam', normalization=True):
     """Train the NN model with given data"""
+    if normalization:
+        if model.data_mean_input is None or model.data_std_input is None:
+            model.data_mean_input = torch.Tensor(np.mean(data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(
+                np.mean(data_in, axis=0))
+            model.data_std_input = torch.Tensor(
+                np.std(data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(
+                np.std(data_in, axis=0)) + 1e-10
+            model.data_mean_output = torch.Tensor(np.mean(data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(
+                np.mean(data_out, axis=0))
+            model.data_std_output = torch.Tensor(
+                np.std(data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(
+                np.std(data_out, axis=0)) + 1e-10
 
-    if model.data_mean_input is None or model.data_std_input is None:
-        model.data_mean_input = torch.Tensor(np.mean(data_in, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(
-            np.mean(data_in, axis=0))
-        model.data_std_input = torch.Tensor(
-            np.std(data_in, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(
-            np.std(data_in, axis=0)) + 1e-10
-        model.data_mean_output = torch.Tensor(np.mean(data_out, axis=0)).cuda() if model.cuda_enabled else torch.Tensor(
-            np.mean(data_out, axis=0))
-        model.data_std_output = torch.Tensor(
-            np.std(data_out, axis=0)).cuda() + 1e-10 if model.cuda_enabled else torch.Tensor(
-            np.std(data_out, axis=0)) + 1e-10
-
-    data_in_tensor = (torch.Tensor(
-        data_in).cuda() - model.data_mean_input) / model.data_std_input if model.cuda_enabled else (torch.Tensor(
-        data_in) - model.data_mean_input) / model.data_std_input
-    data_out_tensor = (torch.Tensor(
-        data_out).cuda() - model.data_mean_output) / model.data_std_output if model.cuda_enabled else (torch.Tensor(
-        data_out) - model.data_mean_output) / model.data_std_output
-
+        data_in_tensor = (torch.Tensor(
+            data_in).cuda() - model.data_mean_input) / model.data_std_input if model.cuda_enabled else (torch.Tensor(
+            data_in) - model.data_mean_input) / model.data_std_input
+        data_out_tensor = (torch.Tensor(
+            data_out).cuda() - model.data_mean_output) / model.data_std_output if model.cuda_enabled else (torch.Tensor(
+            data_out) - model.data_mean_output) / model.data_std_output
+    else:
+        data_in_tensor = torch.Tensor(data_in).cuda() if model.cuda_enabled else torch.Tensor(data_in)
+        data_out_tensor = torch.Tensor(data_out).cuda() if model.cuda_enabled else torch.Tensor(data_out)
     batch_size = len(data_in) if minibatch > len(data_in) else minibatch
-    tasks_tensor = torch.LongTensor(
-        [[task_id] for _ in range(batch_size)]).cuda() if model.cuda_enabled else torch.LongTensor(
-        [[task_id] for _ in range(batch_size)])
+    if model.embedding_dim > 0:
+        tasks_tensor = torch.LongTensor(
+            [[task_id] for _ in range(batch_size)]).cuda() if model.cuda_enabled else torch.LongTensor(
+            [[task_id] for _ in range(batch_size)])
+    else:
+        tasks_tensor = None
 
-    optimizer = optim.Adam(model.parameters(), lr=inner_lr) if optimizer is None else optimizer
+    optimizer = optim.Adam(model.parameters(), lr=inner_lr)
     model.train(mode=True)
     Loss = []
     for inner_count in range(inner_iter):
@@ -410,16 +579,26 @@ def train(model, data_in, data_out, task_id, inner_iter=100, inner_lr=1e-3, mini
         y = data_out_tensor[permutation]
         model.train(mode=True)
         losses = []
-        for i in range(0, x.size(0) - batch_size + 1, batch_size):
-            optimizer.zero_grad()
-            pred = model(x[i:i + batch_size], tasks_tensor)
-            loss = model.loss_function(pred, y[i:i + batch_size])
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item() / batch_size)
+        if inner_optimizer is 'Adam':
+            for i in range(0, x.size(0) - batch_size + 1, batch_size):
+                optimizer.zero_grad()
+                pred = model(x[i:i + batch_size], tasks_tensor)
+                loss = model.loss_function(pred, y[i:i + batch_size])
+                loss.backward()
+                optimizer.step()
+                losses.append(loss.item() / batch_size)
+        else:
+            for i in range(0, x.size(0) - batch_size + 1, batch_size):
+                model.zero_grad()
+                pred = model(x[i:i + batch_size], tasks_tensor)
+                loss = model.loss_function(pred, y[i:i + batch_size])
+                loss.backward()
+                for param in model.parameters():
+                    param.data -= inner_lr * param.grad.data
+                losses.append(loss.item() / batch_size)
+
         Loss.append(np.mean(losses))
         # ~ bar.update(item_id= "Iter " + str(inner_count) + " | Loss: "+str(np.mean(losses)))
-
     model.train(mode=False)
     return Loss
 
