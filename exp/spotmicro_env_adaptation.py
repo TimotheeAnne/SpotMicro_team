@@ -28,7 +28,7 @@ except:
 
 class Cost(object):
     def __init__(self, ensemble_model, init_state, horizon, action_dim, goal, config, last_action,
-                 obs_attributes_index, speed=None):
+                 obs_attributes_index, speed=None, current_time=0.):
         self.__ensemble_model = ensemble_model
         self.__init_state = init_state
         self.__horizon = horizon
@@ -44,6 +44,9 @@ class Cost(object):
         self.__rollreward = config['rollreward']
         self.__pitchreward = config['pitchreward']
         self.__yawreward = config['yawreward']
+        self.__squatreward = config['squatreward']
+        self.__yawdotreward = config['yawdotreward']
+        self.__pitchingreward = config['pitchingreward']
         self.__desired_speed = config['desired_speed'] if speed is None else speed
         self.__last_action = last_action
         self.__action_norm_w = config['action_norm_weight']
@@ -64,6 +67,7 @@ class Cost(object):
         self.__ctrl_time_step = config['ctrl_time_step']
         self.__obs_at_ind = obs_attributes_index
         self.__obs_at = config['obs_attributes']
+        self.__current_time = current_time
 
     def cost_fn(self, samples):
         a = torch.FloatTensor(samples).cuda() \
@@ -124,7 +128,22 @@ class Cost(object):
                 diff_state = dyn_model.predict_tensor(model_input)
                 start_states += diff_state
                 # necessary to move forwards
-                x_vel_cost = (start_states[:, self.__obs_at_ind['xdot']] - self.__desired_speed) ** 2 * self.__xreward
+                if 'xdot' in self.__obs_at:
+                    x_vel_cost = (start_states[:,
+                                  self.__obs_at_ind['xdot']] - self.__desired_speed) ** 2 * self.__xreward
+                    all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h
+
+                # for squat
+                if 'q' in self.__obs_at:
+                    target_low_squat_joint = torch.tensor([[0, .5, -0.8] * 4] * len(start_states)).cuda()
+                    target_high_squat_joint = torch.tensor([[0, .8, -1.2] * 4] * len(start_states)).cuda()
+                    if (self.__current_time % 4) < 2:
+                        squat_cost = torch.sum((start_states[:, :12] - target_low_squat_joint) ** 2,
+                                               (1)) * self.__squatreward
+                    else:
+                        squat_cost = torch.sum((start_states[:, :12] - target_high_squat_joint) ** 2,
+                                               (1)) * self.__squatreward
+                    all_costs[start_index: end_index] += -torch.exp(-squat_cost) * self.__discount ** h
                 # not 'necessary?' rewards
                 if 'ydot' in self.__obs_at:
                     y_vel_cost = (start_states[:, self.__obs_at_ind['ydot']]) ** 2 * self.__yreward
@@ -145,6 +164,18 @@ class Cost(object):
                     all_costs[start_index: end_index] += -torch.exp(-yaw_cost) * self.__discount ** h \
                                                          + -torch.exp(-pitch_cost) * self.__discount ** h \
                                                          + -torch.exp(-roll_cost) * self.__discount ** h
+                if 'rpy' in self.__obs_at:
+                    if (self.__current_time % 4) < 2:
+                        pitching_cost = (start_states[:,
+                                         self.__obs_at_ind['rpy'] + 1] - 0.5) ** 2 * self.__pitchingreward
+                    else:
+                        pitching_cost = (start_states[:,
+                                         self.__obs_at_ind['rpy'] + 1] + 0.5) ** 2 * self.__pitchingreward
+                        all_costs[start_index: end_index] += -torch.exp(-pitching_cost) * self.__discount ** h
+                if 'rpydot' in self.__obs_at:
+                    yaw_vel_cost = (start_states[:, self.__obs_at_ind['rpydot'] + 2] - 0.6) ** 2 * self.__yawdotreward
+                    all_costs[start_index: end_index] += -torch.exp(-yaw_vel_cost) * self.__discount ** h
+
                 if self.__soft_smoothing:
                     action_norm_cost = torch.sum(-torch.exp(-self.__action_norm_w * (
                         action_batch[:, h * self.__action_dim: (h + 1) * self.__action_dim]) ** 2))
@@ -169,8 +200,6 @@ class Cost(object):
                                                  - action_batch[:,
                                                    (h - 3) * self.__action_dim: (h - 2) * self.__action_dim]) ** 2)
                     all_costs[start_index: end_index] += torch.sum(action_jerk_cost, axis=1) * self.__discount ** h
-
-                all_costs[start_index: end_index] += -torch.exp(-x_vel_cost) * self.__discount ** h
 
         if self.__hard_smoothing:
             return a[torch.argmin(all_costs)].cpu().detach().numpy()
@@ -287,7 +316,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
         cost_object = Cost(ensemble_model=model, init_state=current_state, horizon=config["horizon"],
                            action_dim=env.action_space.shape[0], goal=config["goal"], speed=None,
-                           config=config, last_action=virtual_acs, obs_attributes_index=env.obs_attributes_index)
+                           config=config, last_action=virtual_acs, obs_attributes_index=env.obs_attributes_index,
+                           current_time=t * 0.02)
 
         config["cost_fn"] = cost_object.cost_fn
         optimizer = RS_opt(config)
@@ -545,7 +575,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         np.save(res_dir + '/mismatches.npy', mismatches)
 
     env = gym.make(*gym_args, **gym_kwargs)
-    x_index = env.obs_attributes_index['xdot']
+    x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
 
     t = trange(config["iterations"] * n_task, desc='', leave=True)
@@ -816,6 +846,7 @@ config = {
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
+    "on_rack": False,
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
     "init_joint": [0., 0.6, -1.] * 4,
     "real_ub": [0.1, 0.8, -0.8] * 4,
@@ -833,6 +864,8 @@ config = {
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
+    "yawdotreward": 0,
+    "pitchingreward": 0,
     "action_norm_weight": 0.0,
     "action_vel_weight": 0,  # 0.05 seems working
     "action_acc_weight": 0,  # 0.05 seems working
@@ -956,32 +989,51 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "frictions"
+config['exp_suffix'] = "squat"
 config_params = []
 
-# mismatches = [
-#     {'friction': 0.2},
-#     {'friction': 0.4},
-#     {'friction': 0.6},
-# ]
-# run_mismatches = []
-# for mismatch in mismatches:
-#     for _ in range(5):
-#         run_mismatches.append([mismatch])
-#         config_params.append({})
+mismatches = [
+    {},
+]
 
-path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-runs = ['0', '1', '2', '3', '4']
-frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+run_mismatches = []
 
-for run in runs:
-    for expert in range(3):
-        for friction in frictions:
-            config_params.append({
-                'pretrained_model': [path + run + "/run_" + str(expert)],
-                "online_experts": [0],
-                'test_mismatches': [([0], [{'friction': friction}])]
-            })
+yawdotreward = [1, 0, 0]
+pitchingreward = [0, 1, 0]
+squatreward = [0, 0, 1]
+pitchreward = [1, 0, 1]
+yawreward = [0, 1, 1]
+
+for i in range(3):
+    run_mismatches.append([{}])
+    config_params.append({
+        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
+        "xreward": 0,
+        "yreward": 0,
+        "zreward": 0,
+        "rollreward": 1,
+        "pitchreward": pitchreward[i],
+        "yawreward": yawreward[i],
+        "squatreward": squatreward[i],
+        "popsize": 10000,
+        'on_rack': 0,
+        "yawdotreward": yawdotreward[i],
+        "pitchingreward": pitchingreward[i],
+    })
+
+
+# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+# runs = ['0', '1', '2', '3', '4']
+# frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+#
+# for run in runs:
+#     for expert in range(3):
+#         for friction in frictions:
+#             config_params.append({
+#                 'pretrained_model': [path + run + "/run_" + str(expert)],
+#                 "online_experts": [0],
+#                 'test_mismatches': [([0], [{'friction': friction}])]
+#             })
 
 
 def apply_config_params(conf, params):
@@ -1003,7 +1055,7 @@ def env_args_from_config(config):
         'action_vel_weight': config["action_vel_weight"],
         'action_acc_weight': config["action_acc_weight"],
         'action_jerk_weight': config["action_jerk_weight"],
-        'on_rack': False,
+        'on_rack': config['on_rack'],
         "init_joint": np.array(config["init_joint"]),
         "ub": np.array(config["real_ub"]),
         "lb": np.array(config["real_lb"]),
