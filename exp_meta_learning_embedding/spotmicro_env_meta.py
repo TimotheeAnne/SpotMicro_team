@@ -837,22 +837,21 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [50]
+adapt_steps = [5, 10, 20, 50, 100]
 embedding_sizes = [10]
 epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
-frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
-            for friction in frictions:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
                          "meta_model_name": "frictions3_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
                          'training_tasks_index': [0, 1, 2], 'online': True, 'start_from_raw': True,
                          "data_dir": "data/spotmicro/frictions3_run" + data_dir})
-                    test_mismatches.append(([0], [{'friction': friction}]))
+                    test_mismatches.append(([0], [{'changing_friction': True}]))
 
 n_run = len(config_params)
 exp_dir = None
