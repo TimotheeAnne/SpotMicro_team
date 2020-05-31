@@ -136,7 +136,9 @@ class SpotMicroEnv(gym.Env):
                          'load_weight': self.load_weight,
                          'load_pos': self.load_pos,
                          'faulty_motors': self.faulty_motors,
-                         'faulty_joints': self.faulty_joints}
+                         'faulty_joints': self.faulty_joints,
+                         'changing_friction': False}
+        self.changing_friction = False
         self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
@@ -320,6 +322,11 @@ class SpotMicroEnv(gym.Env):
 
     def step(self, action):
         a = np.copy(action)
+        if self.changing_friction:
+            self.lateral_friction = 0.8 - 0.7 * self.t/10
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction + 0.2,
+                                                                                 self.lateral_friction + 0.2, 1])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         if self.normalized_action:
             a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
         if self.action_space == "S&E":
@@ -485,6 +492,7 @@ class SpotMicroEnv(gym.Env):
     def set_mismatch(self, mismatch):
         """ a hard reset is required after setting_mismatch"""
         self.mismatch = {'friction': 0.8,
+                         'changing_friction': False,
                          'wind_force': 0,
                          'load_weight': 0,
                          'load_pos': 0,
@@ -507,6 +515,7 @@ class SpotMicroEnv(gym.Env):
         self.faulty_joints = self.mismatch['faulty_joints']
         self.load_weight = self.mismatch['load_weight']
         self.load_pos = self.mismatch['load_pos']
+        self.changing_friction = self.mismatch['changing_friction']
 
         self.apply_mismatch()
 
@@ -520,7 +529,7 @@ class SpotMicroEnv(gym.Env):
                                                        rgbaColor=MOTORS_COLORS[motor])
 
         self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction+0.2, self.lateral_friction+0.2, 1])
-        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
+        # self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
     def get_observation_upper_bound(self):
@@ -596,7 +605,7 @@ if __name__ == "__main__":
         for bound in bounds:
             config.append({'maxi': maxi, 'real_ub': bound[0], 'real_lb': bound[1]})
 
-    init_joint = np.array([0., 0.6, -1.] * 4)
+    init_joint = np.array([0., 0.6, -0.8] * 4)
     # init_joint = np.array([-0.2, 0.6, -1.] + [0., 0.6, -1.] + [-0.2, 0.6, -1.] + [0.2, 0.6, -1.])
 
     real_ub = np.array(config[run]['real_ub'] * 4)  # max [0.548, 1.548, 2.59]
@@ -628,13 +637,13 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'friction': 0.8})
+        env.set_mismatch({'changing_friction': True})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
 
         # recorder = None
-        recorder = VideoRecorder(env, "test2.mp4")
+        recorder = VideoRecorder(env, "squat.mp4")
 
         ub = 1
         lb = -1
@@ -651,11 +660,19 @@ if __name__ == "__main__":
         #     data = pickle.load(f)
 
         actions = None
-        # actions = data['actions'][0][250]
+        # actions = []
+        # T, mini, maxi = 50, [0.5, -0.8], [0.8, -1.2]
+        #
+        # for tt in range(2*T):
+        #     joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
+        #     actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
+        # reverse_actions = actions.copy()
+        # reverse_actions.reverse()
+        # actions = actions + reverse_actions
 
         degree = 0
-        # t = trange(3, 500 + 3, desc='', leave=True)
-        t = range(3, 20 + 3)
+        t = trange(3, 500 + 3, desc='', leave=True)
+        # t = range(3, 500 + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
@@ -689,7 +706,7 @@ if __name__ == "__main__":
             # x[:6] = past[-1][:6]
             action = np.copy(x)
             if actions is not None:
-                action = actions[(i - 3)]
+                action = actions[(i - 3) % len(actions)]
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
