@@ -837,7 +837,7 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [5, 10, 20, 50, 100]
+adapt_steps = [1, 500]
 embedding_sizes = [10]
 epochs = [20]
 data_dirs = ['0', '1', '2', '3', '4']
