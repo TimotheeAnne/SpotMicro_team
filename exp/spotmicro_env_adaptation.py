@@ -864,6 +864,7 @@ config = {
     "rollreward": 1,
     "pitchreward": 1,
     "yawreward": 1,
+    "squatreward": 0,
     "yawdotreward": 0,
     "pitchingreward": 0,
     "action_norm_weight": 0.0,
