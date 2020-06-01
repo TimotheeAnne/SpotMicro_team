@@ -318,14 +318,13 @@ def extract_action_seq(data):
     return np.array(actions)
 
 
-def compute_likelihood(data, models, beta=1.0):
+def compute_likelihood(data, models, data_size=None, beta=1.0):
     """
     Computes MSE loss and then softmax to have a probability
     """
-    data_size = config['adapt_steps']
     if data_size is None: data_size = len(data)
     lik = np.zeros(len(models))
-    x, y, _, _ = process_data(data[-data_size::])
+    x, y, _, _ = process_data(data[-data_size:])
     for i, m in enumerate(models):
         y_pred = m.predict(x)
         lik[i] = np.exp(- beta * m.loss_function_numpy(y, y_pred) / len(x))
@@ -503,11 +502,11 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                 A.set_description(str(np.sum(np.array(samples['obs'])[:, x_index]) * 0.02))
                 if done:
                     break
-                data = trajectory
+                data += trajectory
                 '''-----------------Compute likelihood before relearning the models-------'''
                 if steps < config['stop_adapatation_step']:
                     if len(test_mismatch) <= 2:
-                        task_likelihoods = compute_likelihood(data, raw_models)
+                        task_likelihoods = compute_likelihood(data, raw_models, data_size=config['adapt_steps'])
                     samples['likelihood'].append(np.copy(task_likelihoods))
                     task_index = np.argmax(task_likelihoods)
                     task_likelihoods = task_likelihoods * 0
@@ -558,7 +557,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
             data += trajectory
             '''-----------------Compute likelihood before relearning the models-------'''
-            task_likelihoods = compute_likelihood(data, raw_models)
+            task_likelihoods = compute_likelihood(data, raw_models, data_size=config['adapt_steps'])
             samples['likelihood'].append(np.copy(task_likelihoods))
             if (len(samples['reward'][0])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
@@ -645,7 +644,7 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 1,
+    "record_video": 0,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
@@ -839,10 +838,10 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [20]
+adapt_steps = [1, 2, 5, 10, 20, 50, 100, 200, 500]
 embedding_sizes = [10]
 epochs = [20]
-data_dirs = ['0']
+data_dirs = ['0', '1', '2', '3', '4']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
