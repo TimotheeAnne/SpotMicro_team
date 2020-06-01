@@ -475,9 +475,9 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             current_state = env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
             n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
-            A = trange(n_adapt_steps, desc='', leave=True)
-            # for adapt_steps in range(n_adapt_steps):
-            for adapt_steps in A:
+            # A = trange(n_adapt_steps, desc='', leave=True)
+            # for adapt_steps in A:
+            for adapt_steps in range(n_adapt_steps):
                 steps = adapt_steps * config['successive_steps']
                 if steps in test_mismatch[0]:
                     mismatch_index = test_mismatch[0].index(steps)
@@ -614,7 +614,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 1,
+    "iterations": 4,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
