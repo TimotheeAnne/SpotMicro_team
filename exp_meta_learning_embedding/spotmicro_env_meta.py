@@ -475,8 +475,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             current_state = env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
             n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
-            # A = trange(n_adapt_steps, desc='', leave=True)
-            # for adapt_steps in A:
             for adapt_steps in range(n_adapt_steps):
                 steps = adapt_steps * config['successive_steps']
                 if steps in test_mismatch[0]:
@@ -499,7 +497,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                                                               traject_cost=c,
                                                               past=past
                                                               )
-                A.set_description(str(np.sum(np.array(samples['obs'])[:, x_index]) * 0.02))
                 if done:
                     break
                 data += trajectory
