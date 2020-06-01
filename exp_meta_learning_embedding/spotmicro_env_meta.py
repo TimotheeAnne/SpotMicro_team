@@ -453,7 +453,6 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     traj_obs, traj_acs, traj_reward, traj_rewards, traj_likelihood = [], [], [], [], []
     best_reward, best_distance = -np.inf, 0
     tbar = trange(config["iterations"], desc='', leave=True)
-
     alpha = (np.array(config['real_ub']) - np.array(config['real_lb'])) / 2
     config['max_action_velocity'] = config['max_action_velocity'] / alpha * config['ctrl_time_step']
     config['max_action_acceleration'] = config['max_action_acceleration'] / alpha * config['ctrl_time_step'] ** 2
@@ -477,7 +476,9 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
             current_state = env.reset(hard_reset=True)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
             n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
-            for adapt_steps in range(n_adapt_steps):
+            A = trange(n_adapt_steps, desc='', leave=True)
+            # for adapt_steps in range(n_adapt_steps):
+            for adapt_steps in A:
                 steps = adapt_steps * config['successive_steps']
                 if steps in test_mismatch[0]:
                     mismatch_index = test_mismatch[0].index(steps)
@@ -499,6 +500,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
                                                               traject_cost=c,
                                                               past=past
                                                               )
+                A.set_description(str(np.sum(np.array(samples['obs'])[:, x_index]) * 0.02))
                 if done:
                     break
                 data = trajectory
@@ -613,7 +615,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 4,
+    "iterations": 1,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -656,7 +658,7 @@ config = {
     'testing_data': None,
     "model_name": "spotmicro_meta_embedding_model",
     "meta_model_name": "meta_model",
-    "env_name": "meta_spotmicro_05",
+    "env_name": "meta_spotmicro_06",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "Default experiment.",
@@ -837,10 +839,10 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [1, 500]
+adapt_steps = [20]
 embedding_sizes = [10]
 epochs = [20]
-data_dirs = ['0', '1', '2', '3', '4']
+data_dirs = ['0']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
