@@ -167,11 +167,11 @@ class Cost(object):
                 if 'rpy' in self.__obs_at:
                     if (self.__current_time % 4) < 2:
                         pitching_cost = (start_states[:,
-                                         self.__obs_at_ind['rpy'] + 1] - 0.5) ** 2 * self.__pitchingreward
+                                         self.__obs_at_ind['rpy'] + 1] - 0.4) ** 2 * self.__pitchingreward
                     else:
                         pitching_cost = (start_states[:,
-                                         self.__obs_at_ind['rpy'] + 1] + 0.5) ** 2 * self.__pitchingreward
-                        all_costs[start_index: end_index] += -torch.exp(-pitching_cost) * self.__discount ** h
+                                         self.__obs_at_ind['rpy'] + 1] + 0.4) ** 2 * self.__pitchingreward
+                    all_costs[start_index: end_index] += -torch.exp(-pitching_cost) * self.__discount ** h
                 if 'rpydot' in self.__obs_at:
                     yaw_vel_cost = (start_states[:, self.__obs_at_ind['rpydot'] + 2] - 0.6) ** 2 * self.__yawdotreward
                     all_costs[start_index: end_index] += -torch.exp(-yaw_vel_cost) * self.__discount ** h
@@ -877,7 +877,7 @@ config = {
     "record_video": 1,
     "video_recording_frequency": 50,
     "result_dir": "results",
-    "env_name": "spot_micro_05",
+    "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "SpotMicro evaluate from scratch",
@@ -998,42 +998,40 @@ mismatches = [
 
 run_mismatches = []
 
-yawdotreward = [1, 0, 0]
-pitchingreward = [0, 1, 0]
-squatreward = [0, 0, 1]
-pitchreward = [1, 0, 1]
-yawreward = [0, 1, 1]
+# yawdotreward = [0]
+# pitchingreward = [1]
+# squatreward = [0]
+# pitchreward = [0]
+# yawreward = [1]
 
-for i in range(3):
-    run_mismatches.append([{}])
-    config_params.append({
-        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
-        "xreward": 0,
-        "yreward": 0,
-        "zreward": 0,
-        "rollreward": 1,
-        "pitchreward": pitchreward[i],
-        "yawreward": yawreward[i],
-        "squatreward": squatreward[i],
-        "popsize": 10000,
-        'on_rack': 0,
-        "yawdotreward": yawdotreward[i],
-        "pitchingreward": pitchingreward[i],
-    })
+# for i in range(1):
+#     run_mismatches.append([{'changing_friction': True}])
+#     config_params.append({
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
+#         "xreward": 0,
+#         "yreward": 0,
+#         "zreward": 0,
+#         "rollreward": 1,
+#         "pitchreward": pitchreward[i],
+#         "yawreward": yawreward[i],
+#         "squatreward": squatreward[i],
+#         "popsize": 10000,
+#         'on_rack': 0,
+#         "yawdotreward": yawdotreward[i],
+#         "pitchingreward": pitchingreward[i],
+#     })
 
 
-# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-# runs = ['0', '1', '2', '3', '4']
-# frictions = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
-#
-# for run in runs:
-#     for expert in range(3):
-#         for friction in frictions:
-#             config_params.append({
-#                 'pretrained_model': [path + run + "/run_" + str(expert)],
-#                 "online_experts": [0],
-#                 'test_mismatches': [([0], [{'friction': friction}])]
-#             })
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+runs = ['0', '1', '2', '3', '4']
+
+for run in runs:
+    for expert in range(3):
+        config_params.append({
+            'pretrained_model': [path + run + "/run_" + str(expert)],
+            "online_experts": [0],
+            'test_mismatches': [([0], [{'changing_friction': True}])]
+        })
 
 
 def apply_config_params(conf, params):
