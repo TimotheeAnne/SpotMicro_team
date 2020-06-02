@@ -641,7 +641,7 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 0,
+    "record_video": 1,
     "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
@@ -835,9 +835,9 @@ mismatches = [
 test_mismatches = []
 config_params = []
 
-adapt_steps = [1, 2, 5, 10, 20, 50, 100, 200, 500]
+adapt_steps = [10, 50]
 embedding_sizes = [10]
-epochs = [20]
+epochs = [1, 100]
 data_dirs = ['0', '1', '2', '3', '4']
 
 for a in adapt_steps:
