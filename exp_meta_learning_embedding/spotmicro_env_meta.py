@@ -846,7 +846,7 @@ for a in adapt_steps:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "all_emb_size_" + str(embedding_size),
+                         "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
                          'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7], 'online': True, 'start_from_raw': True,
                          "data_dir": data_dir})
                     test_mismatches.append(([0], [{'changing_friction': True}]))
