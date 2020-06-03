@@ -627,7 +627,7 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same control1ler
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
@@ -783,8 +783,8 @@ def check_config(config):
             obs_dim += 3
         elif attribute in ['x', 'y', 'z', 'xdot', 'ydot', 'zdot']:
             obs_dim += 1
-    config["ensemble_dim_in"] = obs_dim + 12
-    config["ensemble_dim_out"] = obs_dim
+    config["dim_in"] = obs_dim + 12
+    config["dim_out"] = obs_dim
 
 
 def env_args_from_config(config):
@@ -838,7 +838,7 @@ config_params = []
 adapt_steps = [10, 50]
 embedding_sizes = [10]
 epochs = [1, 100]
-data_dirs = ["data/spotmicro/07_04_2020_11_10_01_test_mismatches_copy"]
+data_dirs = ["data/spotmicro/all_mismatches"]
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -846,7 +846,7 @@ for a in adapt_steps:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "frictions3_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
+                         "meta_model_name": "all_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
                          'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7], 'online': True, 'start_from_raw': True,
                          "data_dir": data_dir})
                     test_mismatches.append(([0], [{'changing_friction': True}]))
