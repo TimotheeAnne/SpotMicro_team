@@ -1071,7 +1071,7 @@ if real_time:
     config["rollreward"] = 1
     config["pitchreward"] = 1
     config["yawreward"] = 1
-    path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
+    path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp/results/"
     directory = ['27_03_2020_11_04_21_Slippery_floor'][0]
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
