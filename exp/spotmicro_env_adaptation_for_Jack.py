@@ -836,7 +836,7 @@ def real_time_test(gym_args, mismatches, config, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 1,
+    "iterations": 2,
     "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,

@@ -611,7 +611,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 4,
+    "iterations": 5,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -627,7 +627,7 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same control1ler
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
@@ -641,8 +641,8 @@ config = {
     "action_jerk_weight": 0.,
     "soft_smoothing": 0,
     "hard_smoothing": 1,
-    "record_video": 0,
-    "video_recording_frequency": 20,
+    "record_video": 1,
+    "video_recording_frequency": 1,
     "online_damage_probability": 0.0,
     "sample_model": False,
 
@@ -783,8 +783,8 @@ def check_config(config):
             obs_dim += 3
         elif attribute in ['x', 'y', 'z', 'xdot', 'ydot', 'zdot']:
             obs_dim += 1
-    config["ensemble_dim_in"] = obs_dim + 12
-    config["ensemble_dim_out"] = obs_dim
+    config["dim_in"] = obs_dim + 12
+    config["dim_out"] = obs_dim
 
 
 def env_args_from_config(config):
@@ -828,17 +828,17 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    ([0], [{'friction': 0.2}]),
+    ([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": 2}, {"faulty_motors": [10], "faulty_joints": [1]}]),
 
 ]
 
 test_mismatches = []
 config_params = []
 
-adapt_steps = [1, 2, 5, 10, 20, 50, 100, 200, 500]
+adapt_steps = [10, 50]
 embedding_sizes = [10]
-epochs = [20]
-data_dirs = ['0', '1', '2', '3', '4']
+epochs = [1, 100]
+data_dirs = ["data/spotmicro/all_mismatches"]
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -846,9 +846,9 @@ for a in adapt_steps:
                 for data_dir in data_dirs:
                     config_params.append(
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "frictions3_emb_size_" + str(embedding_size) + "_dir_" + data_dir,
-                         'training_tasks_index': [0, 1, 2], 'online': True, 'start_from_raw': True,
-                         "data_dir": "data/spotmicro/frictions3_run" + data_dir})
+                         "meta_model_name": "all_emb_size_" + str(embedding_size),
+                         'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7], 'online': True, 'start_from_raw': True,
+                         "data_dir": data_dir})
                     test_mismatches.append(([0], [{'changing_friction': True}]))
 
 n_run = len(config_params)
