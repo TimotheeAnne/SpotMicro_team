@@ -19,6 +19,8 @@ import os
 import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
+from gym import spaces
+import math
 
 try:
     from pynput.keyboard import Key, Listener
@@ -244,8 +246,6 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
     lb, ub = config['lb'], config['ub']
     trajectory = []
     traject_cost = 0
-    recorder = None
-    # recorder = VideoRecorder(env, config['logdir'] + "/videos/random_"+str(index_iter)+".mp4")
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
     past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for i in range(3, steps + 3):
@@ -263,15 +263,12 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
         for k in range(K):
             next_state, rew, done, info = env.step(a)
             r += rew
-            if recorder is not None:
-                recorder.capture_frame()
         obs.append(next_state)
         acs.append(a)
         if config['hard_smoothing']:
             past = np.append(past, [np.copy(x)], axis=0)
         reward.append(r)
         rewards.append(info['rewards'])
-        # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         desired_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
@@ -279,9 +276,7 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
         traject_cost += -r
         if done:
             break
-    if recorder is not None:
-        recorder.capture_frame()
-        recorder.close()
+
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))
     samples['reward'].append(np.copy(reward))
@@ -507,6 +502,105 @@ def extract_action_seq(data):
     return np.array(actions)
 
 
+class RealRobotEnv:
+    """ Class for the interface between the python code and the real robot """
+
+    def __init__(self):
+        """
+        the observation is of size 30:
+        q: the 12 joints positions in radian, in the order:
+                  ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
+                   'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
+                   'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
+                   'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
+                   ]
+        qdot: the 12 joints velocity, smae order
+        rpy: roll, pitch and yaw of the base
+        rpydot: the roll, pitch and yaw rate of the base
+        """
+        self.obs_attributes = ['q', 'qdot', 'rpy', 'rpydot']
+        self.obs_attributes_index = {'q': 0, 'qdot': 12, 'rpy': 15, 'rpydot': 18}
+        self.metadata = {}
+        self.mismatch = None
+        self.init_joint = np.array([0., 0.6, -0.8] * 4)
+        self.ub = np.array([0.1, 0.8, -0.8] * 4)
+        self.lb = np.array([-0.1, 0.4, -1.2] * 4)
+        self._action_bound = 1
+        action_dim = 12
+        action_high = np.array([self._action_bound] * action_dim)
+        self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
+        self.desired_yaw_speed = 0.5
+
+    def set_mismatch(self, mismatch):
+        """ Apply virtual damage to the robot """
+        # TODO set_mismatch but not now
+        self.mismatch = mismatch
+
+    def reset(self, hard_reset=False):
+        """
+        input: hard_reset: boolean, for compatibility
+        output: initial observation vector, array of size 30
+        Initialise the robot in the initial joints: init_joint and return the initial observation vector
+        """
+        # TODO reset should put the robot at the joint initial value self.init_joint and ruturn the observation vector instead of np.zeros(30)
+        obs = np.zeros(30)
+        return obs
+
+    def compute_reward(self, obs):
+        """
+        input: observation: array of size 30
+        output: the sum reward: float,
+                the list of all rewards: array of size 3
+        compute the reward of the current observation vector
+        """
+        index_rpy = self.obs_attributes_index['rpy']
+        [r, p] = obs[index_rpy:index_rpy + 2]
+        ydot = obs[self.obs_attributes_index['rpydot'] + 2]
+
+        roll_reward = -r ** 2
+        pitch_reward = -p ** 2
+        yaw_dot_reward = (ydot - self.desired_yaw_speed) ** 2
+
+        reward_sum = roll_reward + pitch_reward + yaw_dot_reward
+        return reward_sum, [pitch_reward, roll_reward, yaw_dot_reward]
+
+    def compute_done(self, obs):
+        """
+        input: observation: array of size 30
+        output: episode termination: boolean
+        evaluate if the current episode must stop
+        """
+        index = self.obs_attributes_index['rpy']
+        [r, p] = obs[index:index + 2]
+        return abs(r) > math.pi / 4 or abs(p) > math.pi / 4
+
+    def step(self, action):
+        """
+        input: action: array of size 12 in order
+                  ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
+                   'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
+                   'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
+                   'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
+                   ]
+        output: (initial observation vector: array of size 30,
+                 the reward: float,
+                 episode termination: boolean,
+                 other info: dictionnary)
+        apply the action and return the resulting observation vector
+        """
+        a = np.copy(action)
+        #  de-normalize the action
+        a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
+
+        # TODO step a is the desired joint position in radiant to send to the robot and return the current observation vector instead of np.zeros(30)
+
+        obs = np.zeros(30)
+        reward, rewards = self.compute_reward(obs)
+        done = self.compute_done(obs)
+        info = {'rewards': rewards}
+        return obs, reward, done, info
+
+
 def main(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
     if config['exp_dir'] is None:
@@ -574,10 +668,12 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         np.save(res_dir + '/mismatches.npy', mismatches)
 
-    env = gym.make(*gym_args, **gym_kwargs)
+    if not config['real_robot']:
+        env = gym.make(*gym_args, **gym_kwargs)
+    else:
+        env = RealRobotEnv()
     x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
-
     t = trange(config["iterations"] * n_task, desc='', leave=True)
     for index_iter in t:
         env_index = int(index_iter % n_task)
@@ -604,9 +700,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             all_costs.append(c)
         else:
             '''------------Update models------------'''
-            x, y, high, low = process_data(data[env_index])
-            models[env_index] = train_ensemble_model(train_in=x, train_out=y, sampling_size=-1, config=config,
-                                                     model=models[env_index])
             trajectory, c = execute(env=env,
                                     init_state=config["init_state"],
                                     model=models[env_index],
@@ -633,6 +726,10 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
             all_action_seq.append(extract_action_seq(trajectory))
             all_costs.append(c)
+
+        x, y, high, low = process_data(data[env_index])
+        models[env_index] = train_ensemble_model(train_in=x, train_out=y, sampling_size=-1, config=config,
+                                                 model=models[env_index])
 
         traj_obs[env_index].extend(samples["obs"])
         traj_acs[env_index].extend(samples["acs"])
@@ -711,14 +808,17 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     recorder = None
                 c = 0
                 init_mismatch = test_mismatches[env_index][1][0]
+
                 env.set_mismatch(init_mismatch)
                 current_state = env.reset(hard_reset=True)
                 past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
+
                 n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
                 for adapt_steps in range(n_adapt_steps):
                     steps = adapt_steps * config['successive_steps']
                     if steps in test_mismatches[env_index][0]:
                         mismatch_index = test_mismatches[env_index][0].index(steps)
+
                         env.set_mismatch(test_mismatches[env_index][1][mismatch_index])
                         model_index = config['online_experts'][mismatch_index]
                     trajectory = []
@@ -758,6 +858,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             else:
                 '''Pick a random environment'''
                 env_index = int(index_iter / len(models)) % n_task
+
                 env.set_mismatch(test_mismatches[env_index])
                 model_index = index_iter % len(models)
                 samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
@@ -835,8 +936,9 @@ def real_time_test(gym_args, mismatches, config, gym_kwargs={}):
 
 config = {
     # exp parameters:
+    "real_robot": True,
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 2,
+    "iterations": 1,
     "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
@@ -856,16 +958,16 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot'],
     "desired_speed": 0.5,
-    "xreward": 1,
-    "yreward": 1,
-    "zreward": 1,
+    "xreward": 0,
+    "yreward": 0,
+    "zreward": 0,
     "rollreward": 1,
     "pitchreward": 1,
-    "yawreward": 1,
+    "yawreward": 0,
     "squatreward": 0,
-    "yawdotreward": 0,
+    "yawdotreward": 1,
     "pitchingreward": 0,
     "action_norm_weight": 0.0,
     "action_vel_weight": 0,  # 0.05 seems working
@@ -891,8 +993,8 @@ config = {
     # Ensemble model params
     "cuda": True,
     "ensemble_epoch": 5,
-    "ensemble_dim_in": 32 + 12 + 1,
-    "ensemble_dim_out": 32 + 1,
+    "ensemble_dim_in": None,
+    "ensemble_dim_out": None,
     "ensemble_hidden": [256, 256],
     "hidden_activation": "relu",
     "ensemble_cuda": True,
@@ -990,49 +1092,11 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "squat"
-# config_params = []
+config['exp_suffix'] = "real_robot"
 
 mismatches = [
     {},
 ]
-
-# run_mismatches = []
-
-# yawdotreward = [0]
-# pitchingreward = [1]
-# squatreward = [0]
-# pitchreward = [0]
-# yawreward = [1]
-
-# for i in range(1):
-#     run_mismatches.append([{'changing_friction': True}])
-#     config_params.append({
-#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
-#         "xreward": 0,
-#         "yreward": 0,
-#         "zreward": 0,
-#         "rollreward": 1,
-#         "pitchreward": pitchreward[i],
-#         "yawreward": yawreward[i],
-#         "squatreward": squatreward[i],
-#         "popsize": 10000,
-#         'on_rack': 0,
-#         "yawdotreward": yawdotreward[i],
-#         "pitchingreward": pitchingreward[i],
-#     })
-
-
-# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-# runs = ['0', '1', '2', '3', '4']
-#
-# for run in runs:
-#     for expert in range(3):
-#         config_params.append({
-#             'pretrained_model': [path + run + "/run_" + str(expert)],
-#             "online_experts": [0],
-#             'test_mismatches': [([0], [{'changing_friction': True}])]
-#         })
 
 
 def apply_config_params(conf, params):

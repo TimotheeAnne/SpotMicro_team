@@ -4,12 +4,12 @@ import os
 import shutil
 
 path = 'exp/results/spot_micro_04/'
-exps = ['07_04_2020_13_58_16_experiment']
+exps = ['26_02_2020_13_55_07_full_control3_copy']
 
 copy = 1
-copy_trajectories = True
-copy_videos = True
-copy_logs = False
+copy_trajectories = False
+copy_videos = False
+copy_logs = True
 copy_test_logs = False
 
 files_to_copy = ['config.json', 'mismatches.npy', 'test_mismatches.npy']
