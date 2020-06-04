@@ -611,7 +611,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 5,
+    "iterations": 10,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -828,7 +828,7 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    ([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": 2}, {"faulty_motors": [10], "faulty_joints": [1]}]),
+    ([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}]),
 
 ]
 
@@ -849,7 +849,7 @@ for a in adapt_steps:
                          "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
                          'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7], 'online': True, 'start_from_raw': True,
                          "data_dir": data_dir})
-                    test_mismatches.append(([0], [{'changing_friction': True}]))
+                    test_mismatches.append(mismatches[0])
 
 n_run = len(config_params)
 exp_dir = None
