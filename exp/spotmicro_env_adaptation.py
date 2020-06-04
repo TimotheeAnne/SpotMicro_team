@@ -842,7 +842,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 4,
+    "test_iterations": 10,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -876,7 +876,7 @@ config = {
 
     # logging
     "record_video": 1,
-    "video_recording_frequency": 50,
+    "video_recording_frequency": 1,
     "result_dir": "results",
     "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
@@ -1023,16 +1023,16 @@ mismatches = [
 #     })
 
 
-path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-runs = ['0', '1', '2', '3', '4']
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+experts = ['0', '1', '3', '6']
 
-for run in runs:
-    for expert in range(3):
-        config_params.append({
-            'pretrained_model': [path + run + "/run_" + str(expert)],
-            "online_experts": [0],
-            'test_mismatches': [([0], [{'changing_friction': True}])]
-        })
+
+for expert in experts:
+    config_params.append({
+        'pretrained_model': [path + "/run_" + str(expert)],
+        "online_experts": [0],
+        'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+    })
 
 
 def apply_config_params(conf, params):
