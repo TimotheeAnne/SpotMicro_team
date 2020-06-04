@@ -1030,7 +1030,7 @@ experts = ['0', '1', '3', '6']
 for expert in experts:
     config_params.append({
         'pretrained_model': [path + "/run_" + str(expert)],
-        "online_experts": [0],
+        "online_experts": [0, 0, 0, 0],
         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
         'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
     })
