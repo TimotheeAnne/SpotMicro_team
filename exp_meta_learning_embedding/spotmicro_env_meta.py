@@ -828,7 +828,7 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    ([0], [{"faulty_motors": [1], "faulty_joints": [0]}]),
+    {"faulty_motors": [1], "faulty_joints": [0]}
 ]
 
 test_mismatches = []
