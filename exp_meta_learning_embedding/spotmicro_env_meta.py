@@ -837,7 +837,7 @@ config_params = []
 adapt_steps = [None]
 embedding_sizes = [10]
 epochs = [5]
-data_dirs = ["data/spotmicro/4_motor_damaged_"]
+data_dirs = ["0", '1', '2', '3', '4']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -847,7 +847,7 @@ for a in adapt_steps:
                         {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
                          "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 500,
                          'training_tasks_index': [0, 1, 2, 3, 4], 'online': False, 'start_from_raw': False,
-                         "data_dir": data_dir})
+                         "data_dir": "data/spotmicro/4_motor_damaged_"+ data_dir})
                     test_mismatches.append(mismatches[0])
 
 n_run = len(config_params)
