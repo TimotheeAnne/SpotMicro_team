@@ -22,8 +22,8 @@ from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 gym.logger.set_level(40)
 
-RENDER_HEIGHT = 360
-RENDER_WIDTH = 480
+RENDER_HEIGHT = 360*2
+RENDER_WIDTH = 480*2
 
 MOTOR_NAMES = ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
                'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
