@@ -2,7 +2,7 @@
 from __future__ import division
 from __future__ import print_function
 from __future__ import absolute_import
-import scipy.stats as stats
+# import scipy.stats as stats
 import numpy as np
 
 class RS_opt(object):
@@ -47,51 +47,3 @@ class RS_opt(object):
                 samples = np.clip(samples, self.lb, self.ub)
                 costs = self.cost_function(samples)
                 return samples[np.argmin(costs)]
-
-
-if __name__ == '__main__':
-    from test_env import Point
-
-    horizon = 10
-    action_dim = 2
-    goal = [-7, 14]
-    env = Point(goal)
-    env.reset()
-    dummy_env = Point(goal)
-    dummy_env.reset()
-
-    def cost_fn(samples):
-        global dummy_env
-        current_state = env.state()
-        costs = []
-        for s in samples:
-            dummy_env.reset(current_state)
-            total_cost = 0
-            for i in range(horizon):
-                a = s[2*i:2*i+2]
-                state, cost, _, _ = dummy_env.step(a)
-                total_cost += cost
-
-            costs.append(total_cost)
-        return costs
-
-    config = {
-                "max_iters": 20, 
-                "epsilon": 0.01, 
-                "lb": -1, 
-                "ub": 1,
-                "popsize": 200,
-                "sol_dim": action_dim*horizon, 
-                "num_elites": 50,
-                "cost_fn": cost_fn, 
-                "alpha": 0.01
-    }
-
-    init_mean, init_var = np.zeros(config["sol_dim"]), np.ones(config["sol_dim"])* 0.5
-    opt = RS_opt(config)
-    for i in range(100):
-        sol = opt.obtain_solution(init_mean, init_var)
-        init_mean, init_var = np.zeros(config["sol_dim"]) , np.ones(config["sol_dim"])* 0.5 
-        a = sol[0:2]
-        _ , _, _, _ = env.step(a)
-        env.render()
