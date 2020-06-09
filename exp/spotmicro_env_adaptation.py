@@ -883,7 +883,7 @@ config = {
     # logging
     "render": False,
     "record_video": 1,
-    "video_recording_frequency": 1,
+    "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
@@ -1001,48 +1001,41 @@ config['exp_suffix'] = "squat"
 config_params = []
 
 mismatches = [
-    {},
+
+    {"faulty_motors": [4], "faulty_joints": [0]},
+    {"faulty_motors": [4], "faulty_joints": [0.5]},
+
+    {"faulty_motors": [5], "faulty_joints": [-1.25]},
+    {"faulty_motors": [5], "faulty_joints": [-0.75]},
+
+    {"faulty_motors": [10], "faulty_joints": [0.5]},
+    {"faulty_motors": [10], "faulty_joints": [1]},
+
+    {"faulty_motors": [11], "faulty_joints": [-0.75]},
+    {"faulty_motors": [11], "faulty_joints": [-0.25]},
 ]
 
-# run_mismatches = []
+run_mismatches = []
 
-# yawdotreward = [0]
-# pitchingreward = [1]
-# squatreward = [0]
-# pitchreward = [0]
-# yawreward = [1]
-
-# for i in range(1):
-#     run_mismatches.append([{'changing_friction': True}])
-#     config_params.append({
-#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
-#         "xreward": 0,
-#         "yreward": 0,
-#         "zreward": 0,
-#         "rollreward": 1,
-#         "pitchreward": pitchreward[i],
-#         "yawreward": yawreward[i],
-#         "squatreward": squatreward[i],
-#         "popsize": 10000,
-#         'on_rack': 0,
-#         "yawdotreward": yawdotreward[i],
-#         "pitchingreward": pitchingreward[i],
-#     })
+for _ in range(5):
+    for mismatch in mismatches:
+        run_mismatches.append([mismatch])
+        config_params.append({})
 
 
 # path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
-path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
-experts = ['1', '2']
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
+# experts = ['1', '2']
 
 
 """ For decreasing friction """
-for expert in experts:
-    config_params.append({
-        'pretrained_model': [path + "/run_" + str(expert)],
-        "online_experts": [0], "render": True,
-        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
-        'test_mismatches': [([0], [{'changing_friction': True}])]
-    })
+# for expert in experts:
+#     config_params.append({
+#         'pretrained_model': [path + "/run_" + str(expert)],
+#         "online_experts": [0], "render": True,
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+#         'test_mismatches': [([0], [{'changing_friction': True}])]
+#     })
 
 """ For training course """
 # for expert in experts:
