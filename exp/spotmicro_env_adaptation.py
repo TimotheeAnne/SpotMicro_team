@@ -238,7 +238,7 @@ def process_data(data):
 
 
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=False)
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config['max_action_jerk'], config['max_torque_jerk']
     lb, ub = config['lb'], config['ub']
@@ -306,7 +306,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             recorder = None
     else:
         recorder = None
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=False)
     trajectory = []
     traject_cost = 0
     model_error = 0
@@ -383,6 +383,8 @@ def execute_online(env, steps, model, config, K, samples,
         samples['obs'].append(np.copy(next_state))
         samples['reward'].append(r)
         samples['rewards'].append(info['rewards'])
+        samples['friction'].append(info['friction'])
+        samples['distance'].append(info['distance'])
         if done:
             break
     return traject_cost, done, past
@@ -402,7 +404,7 @@ def execute_real_time(env, model, config, K):
     def on_press(key):
         if key == Key.left:
             env.set_mismatch(mismatch)
-            env.reset(hard_reset=True)
+            env.reset(hard_reset=False)
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
@@ -695,7 +697,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         for index_iter in t:
             if config['online']:
                 samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
-                           'observed_torques': []}
+                           'observed_torques': [], 'distance': [], 'friction': []}
                 if config['online_experts'] is None:
                     model_index = (index_iter % len(models))
                     env_index = int(index_iter / len(models)) % n_task
@@ -712,7 +714,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 c = 0
                 init_mismatch = test_mismatches[env_index][1][0]
                 env.set_mismatch(init_mismatch)
-                current_state = env.reset(hard_reset=True)
+                current_state = env.reset(hard_reset=False)
                 past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
                 n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
                 for adapt_steps in range(n_adapt_steps):
@@ -739,6 +741,9 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if recorder is not None:
                     recorder.close()
+                    Friction = samples['friction'] if env.changing_friction else None
+                    env.add_comments_to_video(Distance=samples['distance'], Friction=Friction, path=config['logdir'] + "/videos",
+                                              video_name="run_" + str(local_index), dt=config['ctrl_time_step'])
 
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
@@ -841,8 +846,8 @@ config = {
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "online": True,
-    "successive_steps": 50,
-    "test_iterations": 10,
+    "successive_steps": 1,
+    "test_iterations": 1,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -1023,17 +1028,28 @@ mismatches = [
 #     })
 
 
-path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
-experts = ['0', '1', '3', '6']
+# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
+experts = ['0', '1', '2']
 
 
+""" For decreasing friction """
 for expert in experts:
     config_params.append({
         'pretrained_model': [path + "/run_" + str(expert)],
-        "online_experts": [0, 0, 0, 0],
-        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
-        'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+        "online_experts": [0],
+        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+        'test_mismatches': [([0], [{'changing_friction': True}])]
     })
+
+""" For training course """
+# for expert in experts:
+#     config_params.append({
+#         'pretrained_model': [path + "/run_" + str(expert)],
+#         "online_experts": [0, 0, 0, 0],
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+#         'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+#     })
 
 
 def apply_config_params(conf, params):
@@ -1061,6 +1077,7 @@ def env_args_from_config(config):
         "lb": np.array(config["real_lb"]),
         "normalized_action": True,
         "obs_attributes": config['obs_attributes'],
+        "render": True,
     }
 
 
