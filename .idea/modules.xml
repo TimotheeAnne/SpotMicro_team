@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/SpotMicro_team.iml" filepath="$PROJECT_DIR$/.idea/SpotMicro_team.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../simulations/.idea/simulations.iml" filepath="$PROJECT_DIR$/../../simulations/.idea/simulations.iml" />
+    </modules>
+  </component>
+</project>
