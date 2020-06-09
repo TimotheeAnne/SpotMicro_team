@@ -542,6 +542,13 @@ class RealRobotEnv:
         joint_state_sub = rospy.Subscriber('joint_states', JointState, self.jointStateCallback)
         imu_sub = rospy.Subscriber('imu', Imu, self.imuCallback)
 
+        self.joint_pos = np.array([0., 0.6, -0.8] * 4)
+        self.joint_vel = np.zeros(12)
+        self.rpy = np.zeros(3)
+        self.rpydot = np.zeros(3)
+
+        rospy.sleep(2)
+
     def set_mismatch(self, mismatch):
         """ Apply virtual damage to the robot """
         # TODO set_mismatch but not now
@@ -556,6 +563,7 @@ class RealRobotEnv:
         # TODO reset should put the robot at the joint initial value self.init_joint and ruturn the observation vector instead of np.zeros(30)
 
         if(hard_reset == True):
+            print("In hard reset is true")
 
             init_action_spot = self.rearrangeAction(self.init_joint)
             init_joint_cmd = Float64MultiArray()
@@ -563,16 +571,20 @@ class RealRobotEnv:
 
             # only publish joint cmds when connected to ROS
             try:
-                while not rospy.is_shutdown():
+                if not rospy.is_shutdown():
+
                     self.enable_motors_pub.publish(True)
                     self.joint_cmd_pub.publish(init_joint_cmd)
 
-                    # TODO Maybe add a sleep to ensure initial position reached
+                    # sleep for 10 seconds
+                    print("Sleeping for 3 s")
+                    rospy.sleep(2)
+
 
             except rospy.ROSInterruptException:
                 pass
 
-        obs = self.joint_pos + self.joint_vel + self.rpy + self.rpydot
+        obs = np.concatenate([self.joint_pos, self.joint_vel, self.rpy, self.rpydot])
         return obs
 
     def compute_reward(self, obs):
@@ -622,12 +634,13 @@ class RealRobotEnv:
         joint_cmds.data = action_spot
 
         # only publish joint cmds when connected to ROS
+        r = rospy.Rate(100)  # 100hz
         try:
-            while not rospy.is_shutdown():
+            if not rospy.is_shutdown():
                 self.enable_motors_pub.publish(True)
                 self.joint_cmd_pub.publish(joint_cmds)
 
-                # TODO r.sleep() Not sure where to put this to sleep 100 hz
+                r.sleep()
 
         except rospy.ROSInterruptException:
             pass
@@ -639,7 +652,7 @@ class RealRobotEnv:
 
         # TODO step a is the desired joint position in radiant to send to the robot and return the current observation vector instead of np.zeros(30)
 
-        obs = self.joint_pos + self.joint_vel + self.rpy + self.rpydot
+        obs = np.concatenate([self.joint_pos, self.joint_vel, self.rpy, self.rpydot])
         reward, rewards = self.compute_reward(obs)
         done = self.compute_done(obs)
         info = {'rewards': rewards}
@@ -647,13 +660,15 @@ class RealRobotEnv:
 
     def jointStateCallback(self, joint_state_msg):
 
-        self.joint_pos = joint_state_msg.position
-        self.joint_vel = joint_state_msg.velocity
+        self.joint_pos = np.array(joint_state_msg.position)
+        self.joint_pos = self.rearrangeState(self.joint_pos)
+        self.joint_vel = np.array(joint_state_msg.velocity)
+        self.joint_vel = self.rearrangeState(self.joint_vel)
 
     def imuCallback(self, imu_msg):
 
-        self.rpy = [imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z]
-        self.rpydot = [imu_msg.angular_velocity.x, imu_msg.angular_velocity.y, imu_msg.angular_velocity.z]
+        self.rpy = np.array([imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z])
+        self.rpydot = np.array([imu_msg.angular_velocity.x, imu_msg.angular_velocity.y, imu_msg.angular_velocity.z])
 
     def rearrangeAction(self, action_tim):
         """
@@ -670,7 +685,7 @@ class RealRobotEnv:
         'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint'
         'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint', ]
         """
-        action_jack = [None]*12
+        action_jack = np.zeros(12)
         action_jack[0] = action_tim[0]
         action_jack[1] = action_tim[1]
         action_jack[2] = action_tim[2]
@@ -685,6 +700,24 @@ class RealRobotEnv:
         action_jack[11] = action_tim[5]
 
         return action_jack
+
+    def rearrangeState(self, state_jack):
+
+        state_tim = np.zeros(12)
+        state_tim[0] = state_jack[0]
+        state_tim[1] = state_jack[1]
+        state_tim[2] = state_jack[2]
+        state_tim[3] = state_jack[9]
+        state_tim[4] = state_jack[10]
+        state_tim[5] = state_jack[11]
+        state_tim[6] = state_jack[3]
+        state_tim[7] = state_jack[4]
+        state_tim[8] = state_jack[5]
+        state_tim[9] = state_jack[6]
+        state_tim[10] = state_jack[7]
+        state_tim[11] = state_jack[8]
+
+        return state_tim
 
 def main(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
@@ -756,7 +789,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     if not config['real_robot']:
         env = gym.make(*gym_args, **gym_kwargs)
     else:
-        rospy.init_node('pytorch_node') # Initialize ROS node
         env = RealRobotEnv()
     x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
@@ -1215,6 +1247,7 @@ def env_args_from_config(config):
 
 real_time = False
 # real_time = True
+rospy.init_node('pytorch_node') # Initialize ROS node
 
 if real_time:
     config["xreward"] = 1
