@@ -611,7 +611,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 5,
+    "iterations": 300,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -642,7 +642,7 @@ config = {
     "soft_smoothing": 0,
     "hard_smoothing": 1,
     "record_video": 1,
-    "video_recording_frequency": 1,
+    "video_recording_frequency": 20,
     "online_damage_probability": 0.0,
     "sample_model": False,
 
@@ -828,28 +828,31 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    ([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": 2}, {"faulty_motors": [10], "faulty_joints": [1]}]),
-
+    {"faulty_motors": [1], "faulty_joints": [0]},
+    {"faulty_motors": [2], "faulty_joints": [-1]},
+    {"faulty_motors": [7], "faulty_joints": [1]},
+    {"faulty_motors": [8], "faulty_joints": [0]},
 ]
 
 test_mismatches = []
 config_params = []
 
-adapt_steps = [10, 50]
+adapt_steps = [None]
 embedding_sizes = [10]
-epochs = [1, 100]
-data_dirs = ["data/spotmicro/all_mismatches"]
+epochs = [5]
+data_dirs = ["0", '1', '2', '3', '4']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
         for epoch in epochs:
                 for data_dir in data_dirs:
-                    config_params.append(
-                        {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                         "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
-                         'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7], 'online': True, 'start_from_raw': True,
-                         "data_dir": data_dir})
-                    test_mismatches.append(([0], [{'changing_friction': True}]))
+                    for mismatch in mismatches:
+                        config_params.append(
+                            {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
+                             "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 500,
+                             'training_tasks_index': [0, 1, 2, 3, 4], 'online': False, 'start_from_raw': False,
+                             "data_dir": "data/spotmicro/4_motor_damaged_"+ data_dir})
+                        test_mismatches.append(mismatch)
 
 n_run = len(config_params)
 exp_dir = None

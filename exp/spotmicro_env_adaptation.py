@@ -1023,9 +1023,8 @@ mismatches = [
 #     })
 
 
-#path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
-runs = ['0', '1', '2', '3', '4']
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+experts = ['0', '1', '3', '6']
 
 for run in runs:
     for expert in range(3):

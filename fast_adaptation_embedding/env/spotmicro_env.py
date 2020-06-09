@@ -520,6 +520,8 @@ class SpotMicroEnv(gym.Env):
         self.apply_mismatch()
 
     def apply_mismatch(self):
+        if self.wind_force == 0:
+            self.pybullet_client.resetBasePositionAndOrientation(self.wind_arrow, [0, 0, -2], p.getQuaternionFromEuler((0, 0, 0)))
         for motor in range(12):
             if motor in self.faulty_motors:
                 self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
@@ -637,13 +639,14 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({'changing_friction': True})
+        # env.set_mismatch({"faulty_motors": [5], "faulty_joints": [-1]})
+        env.set_mismatch({"friction": 0.2})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
 
-        # recorder = None
-        recorder = VideoRecorder(env, "squat.mp4")
+        recorder = None
+        # recorder = VideoRecorder(env, "squat.mp4")
 
         ub = 1
         lb = -1
@@ -663,7 +666,7 @@ if __name__ == "__main__":
         # actions = []
         # T, mini, maxi = 50, [0.5, -0.8], [0.8, -1.2]
         #
-        # for tt in range(2*T):
+        # for tt in range(T):
         #     joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
         #     actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
         # reverse_actions = actions.copy()
@@ -671,7 +674,7 @@ if __name__ == "__main__":
         # actions = actions + reverse_actions
 
         degree = 0
-        t = trange(3, 500 + 3, desc='', leave=True)
+        t = trange(3, 300 + 3, desc='', leave=True)
         # t = range(3, 500 + 3)
         for i in t:
             if recorder is not None:
