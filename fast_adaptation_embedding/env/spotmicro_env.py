@@ -102,6 +102,7 @@ class SpotMicroEnv(gym.Env):
         self.inspection = inspection
         assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
         self.action_space = action_space
+        self.active_mismatch = []
         if (ub is not None) and (lb is not None):
             self.ub = np.array(ub)
             self.lb = np.array(lb)
@@ -301,8 +302,8 @@ class SpotMicroEnv(gym.Env):
         rgb_array = rgb_array[:, :, :3]
         return rgb_array
 
-    def add_comments_to_video(self, Distance, path, video_name, dt=0.02, Friction=None):
-        steps = len(Distance)
+    def add_comments_to_video(self, texts, path, video_name, dt=0.02):
+        steps = len(texts)
         """ create subtitle """
         comments = ""
         for i in range(steps):
@@ -332,18 +333,37 @@ class SpotMicroEnv(gym.Env):
                 ms2 = str(ms)
 
             comments += "00:00:" + s1 + "," + ms1 + " --> 00:00:" + s2 + "," + ms2 + "\n"
-            d = Distance[i]
-            if Friction is not None:
-                f = Friction[i]
-                comments += "friction: " + "{:1.2f}".format(f) + " - Distance traveled: " + "{:2.2f}".format(d) + "m\n\n"
-            else:
-                comments += "Distance traveled: " + "{:2.2f}".format(d) + "m\n\n"
+            comments += texts[i] + "\n\n"
         with open(path+'/subtitles.srt', 'w') as f:
             f.write(comments)
         os.system('ffmpeg -y -i ' + path + '/subtitles.srt ' + path + '/subtitles.ass')
         """ add subtitle to mp4"""
-        os.system('ffmpeg -y -i ' + path + "/" + video_name + '.mp4 -vf ass=' + path + '/subtitles.ass ' + path + "/" + video_name + '_' + "{:2.2f}".format(Distance[-1]) + 'm.mp4')
+        os.system('ffmpeg -y -i ' + path + "/" + video_name + '.mp4 -vf ass=' + path + '/subtitles.ass ' + path + "/" + video_name + '_' + "{:2.2f}".format(self.distance) + 'm.mp4')
 
+    def compute_current_comment(self):
+        text = ""
+        d = self.distance
+        if 'friction' in self.active_mismatch or self.changing_friction:
+            f = self.lateral_friction
+            text += "friction: " + "{:1.2f}".format(f) + " - "
+        if 'wind_force' in self.active_mismatch:
+            if self.wind_force > 0:
+                text += "Right Wind: " + "{:1.1f}".format(self.wind_force) + "N - "
+            else:
+                text += "Left Wind: " + "{:1.1f}".format(-self.wind_force) + "N - "
+        if 'load_weight' in self.active_mismatch:
+            text += "{:1.1f}".format(self.load_weight) + "kg load at x=" + "{:1.1f}".format(self.load_pos) + "m - "
+        if 'faulty_motors' in self.active_mismatch:
+            for motor, value in zip(self.faulty_motors, self.faulty_joints):
+                name = ['Front Left Shoulder', 'Front Left Hip', 'Front Left Knee',
+                 'Front Right Shoulder', 'Front Right Hip', 'Front Right Knee',
+                 'Rear Left Shoulder', 'Rear Left Hip', 'Rear Left Knee',
+                 'Rear Right Shoulder', 'Rear Right Hip', 'Rear Right Knee',
+                 ]
+                sign = "+" if value > self.init_joint[motor] else ''
+                text += "Blocked " + name[motor] + " at " + sign + "{:2.0f}".format((value-self.init_joint[motor])*180/np.pi) + "° - "
+        text += "Distance traveled: " + "{:2.2f}".format(d) + "m"
+        return text
 
     def changeDynamics(self, quadruped):
         nJoints = self.pybullet_client.getNumJoints(quadruped)
@@ -397,8 +417,8 @@ class SpotMicroEnv(gym.Env):
         if 'xdot' in self.obs_attributes:
             self.distance += obs[self.obs_attributes_index['xdot']] * self.fixedTimeStep * self.action_repeat
         reward, rewards = self.get_reward()
-        info = {'rewards': rewards, 'observed_torques': observed_torques, 'distance': self.distance,
-                'friction': self.lateral_friction}
+        text = self.compute_current_comment()
+        info = {'rewards': rewards, 'observed_torques': observed_torques, 'text': text}
         done = self.fallen()
         return np.array(obs), reward, done, info
 
@@ -552,8 +572,10 @@ class SpotMicroEnv(gym.Env):
                          'load_pos': 0,
                          'faulty_motors': [],
                          'faulty_joints': []}
+        self.active_mismatch = []
         for (key, val) in mismatch.items():
             self.mismatch[key] = val
+            self.active_mismatch.append(key)
         assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
         for x in self.mismatch['faulty_motors']:
             assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
@@ -689,16 +711,18 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        # env.set_mismatch({"faulty_motors": [5], "faulty_joints": [-1]})
+        # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
         # env.set_mismatch({"friction": 0})
-        env.set_mismatch({"changing_friction": True})
+        # env.set_mismatch({"wind_force": -1})
+        env.set_mismatch({"load_weight": 1, "load_pos": 0})
+        # env.set_mismatch({"changing_friction": True})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
         video_name = "video"
 
-        recorder = None
-        # recorder = VideoRecorder(env, video_name+".mp4")
+        # recorder = None
+        recorder = VideoRecorder(env, video_name+".mp4")
 
         ub = 1
         lb = -1
@@ -708,7 +732,7 @@ if __name__ == "__main__":
 
         dt = 0.02
         R = 0
-        Obs, Acs, Distance, Friction = [init_obs], [], [], []
+        Obs, Acs, texts = [init_obs], [], []
 
         # f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/23_03_2020_12_40_33_experiment/run_0/logs.pk"
         # with open(f, 'rb') as f:
@@ -726,7 +750,7 @@ if __name__ == "__main__":
         # actions = actions + reverse_actions
 
         degree = 0
-        steps = 500
+        steps = 5
         t = trange(3, steps + 3, desc='', leave=True)
         # t = range(3, steps + 3)
         for i in t:
@@ -766,8 +790,7 @@ if __name__ == "__main__":
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
-            Friction.append(info['friction'])
-            Distance.append(info['distance'])
+            texts.append(info['text'])
             R += reward
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
@@ -780,5 +803,5 @@ if __name__ == "__main__":
         if recorder is not None:
             recorder.capture_frame()
             recorder.close()
-            env.add_comments_to_video(Distance=Distance, path=".", video_name=video_name, dt=dt)
+            env.add_comments_to_video(texts=texts, path=".", video_name=video_name, dt=dt)
 
