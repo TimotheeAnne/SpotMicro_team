@@ -1023,7 +1023,8 @@ mismatches = [
 #     })
 
 
-path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+#path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
 runs = ['0', '1', '2', '3', '4']
 
 for run in runs:
