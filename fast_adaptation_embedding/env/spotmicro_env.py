@@ -22,8 +22,8 @@ from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 gym.logger.set_level(40)
 
-RENDER_HEIGHT = 360
-RENDER_WIDTH = 480
+RENDER_HEIGHT = 360*3
+RENDER_WIDTH = 480*3
 
 MOTOR_NAMES = ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
                'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
@@ -102,6 +102,7 @@ class SpotMicroEnv(gym.Env):
         self.inspection = inspection
         assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
         self.action_space = action_space
+        self.active_mismatch = []
         if (ub is not None) and (lb is not None):
             self.ub = np.array(ub)
             self.lb = np.array(lb)
@@ -121,7 +122,7 @@ class SpotMicroEnv(gym.Env):
                                    action_weight, action_vel_weight, action_acc_weight, action_jerk_weight]
         self.desired_speed = desired_speed
         self.t = 0
-
+        self.distance = 0
         self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_TINY_RENDERER, 1)
 
         self.faulty_motors = faulty_motors
@@ -140,6 +141,7 @@ class SpotMicroEnv(gym.Env):
                          'changing_friction': False}
         self.changing_friction = False
         self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
+        self.ice_texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/ice-texture.png")  # https://www.needpix.com/about
         self.quadruped = self.loadModels()
         self._BuildJointNameToIdDict()
         self._BuildMotorIdList()
@@ -179,6 +181,8 @@ class SpotMicroEnv(gym.Env):
         orn = self.pybullet_client.getQuaternionFromEuler([0, 0, 0])
         self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
         self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, 0.], orn)
+        self.ice_planeUid = self.pybullet_client.loadURDF(currentdir+"/assets/visual_plane.urdf", [0, 0, 0.], orn)
+        self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1, 1, 1, 0])
         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
@@ -257,6 +261,7 @@ class SpotMicroEnv(gym.Env):
             # time.sleep(self.fixedTimeStep*10)
         self.t = 0
         self._past_velocity = np.zeros((2, 12))
+        self.distance = 0
         return self.get_obs()
 
     def render(self, mode="rgb_array", close=False):
@@ -297,6 +302,69 @@ class SpotMicroEnv(gym.Env):
         rgb_array = rgb_array[:, :, :3]
         return rgb_array
 
+    def add_comments_to_video(self, texts, path, video_name, dt=0.02):
+        steps = len(texts)
+        """ create subtitle """
+        comments = ""
+        for i in range(steps):
+            comments += str(i) + '\n'
+            s = int(dt * i)
+            s1 = '0' + str(s) if s < 10 else str(s)
+            ms = (i % int(1 / dt)) * int(dt * 1000)
+            if ms < 1:
+                ms1 = '000'
+            elif ms < 10:
+                ms1 = '00' + str(ms)
+            elif ms < 100:
+                ms1 = '0' + str(ms)
+            else:
+                ms1 = str(ms)
+
+            s = int((i + 1) * dt)
+            s2 = '0' + str(s) if s < 10 else str(s)
+            ms = ((i + 1) % int(1 / dt)) * int(dt * 1000)
+            if ms < 1:
+                ms2 = '000'
+            elif ms < 10:
+                ms2 = '00' + str(ms)
+            elif ms < 100:
+                ms2 = '0' + str(ms)
+            else:
+                ms2 = str(ms)
+
+            comments += "00:00:" + s1 + "," + ms1 + " --> 00:00:" + s2 + "," + ms2 + "\n"
+            comments += texts[i] + "\n\n"
+        with open(path+'/subtitles.srt', 'w') as f:
+            f.write(comments)
+        os.system('ffmpeg -y -i ' + path + '/subtitles.srt ' + path + '/subtitles.ass')
+        """ add subtitle to mp4"""
+        os.system('ffmpeg -y -i ' + path + "/" + video_name + '.mp4 -vf ass=' + path + '/subtitles.ass ' + path + "/" + video_name + '_' + "{:2.2f}".format(self.distance) + 'm.mp4')
+
+    def compute_current_comment(self):
+        text = ""
+        d = self.distance
+        if 'friction' in self.active_mismatch or self.changing_friction:
+            f = self.lateral_friction
+            text += "friction: " + "{:1.2f}".format(f) + " - "
+        if 'wind_force' in self.active_mismatch:
+            if self.wind_force > 0:
+                text += "Right Wind: " + "{:1.1f}".format(self.wind_force) + "N - "
+            else:
+                text += "Left Wind: " + "{:1.1f}".format(-self.wind_force) + "N - "
+        if 'load_weight' in self.active_mismatch:
+            text += "{:1.1f}".format(self.load_weight) + "kg load at x=" + "{:1.1f}".format(self.load_pos) + "m - "
+        if 'faulty_motors' in self.active_mismatch:
+            for motor, value in zip(self.faulty_motors, self.faulty_joints):
+                name = ['Front Left Shoulder', 'Front Left Hip', 'Front Left Knee',
+                 'Front Right Shoulder', 'Front Right Hip', 'Front Right Knee',
+                 'Rear Left Shoulder', 'Rear Left Hip', 'Rear Left Knee',
+                 'Rear Right Shoulder', 'Rear Right Hip', 'Rear Right Knee',
+                 ]
+                sign = "+" if value > self.init_joint[motor] else ''
+                text += "Blocked " + name[motor] + " at " + sign + "{:2.0f}".format((value-self.init_joint[motor])*180/np.pi) + "° - "
+        text += "Distance traveled: " + "{:2.2f}".format(d) + "m"
+        return text
+
     def changeDynamics(self, quadruped):
         nJoints = self.pybullet_client.getNumJoints(quadruped)
         for i in range(nJoints):
@@ -324,8 +392,10 @@ class SpotMicroEnv(gym.Env):
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
-            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction + 0.2,
-                                                                                 self.lateral_friction + 0.2, 1])
+            # cc = (1/0.36*((0.8-self.lateral_friction)*(0.4+self.lateral_friction)))
+            cc = (0.8-self.lateral_friction)/0.9
+            self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95*cc])
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1-0.8*cc])
             self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         if self.normalized_action:
             a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
@@ -343,8 +413,12 @@ class SpotMicroEnv(gym.Env):
         self._past_actions[-1] = np.copy(a)
 
         obs = self.get_obs()
+
+        if 'xdot' in self.obs_attributes:
+            self.distance += obs[self.obs_attributes_index['xdot']] * self.fixedTimeStep * self.action_repeat
         reward, rewards = self.get_reward()
-        info = {'rewards': rewards, 'observed_torques': observed_torques}
+        text = self.compute_current_comment()
+        info = {'rewards': rewards, 'observed_torques': observed_torques, 'text': text}
         done = self.fallen()
         return np.array(obs), reward, done, info
 
@@ -498,8 +572,10 @@ class SpotMicroEnv(gym.Env):
                          'load_pos': 0,
                          'faulty_motors': [],
                          'faulty_joints': []}
+        self.active_mismatch = []
         for (key, val) in mismatch.items():
             self.mismatch[key] = val
+            self.active_mismatch.append(key)
         assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
         for x in self.mismatch['faulty_motors']:
             assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
@@ -530,8 +606,7 @@ class SpotMicroEnv(gym.Env):
                 self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
                                                        rgbaColor=MOTORS_COLORS[motor])
 
-        self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, self.lateral_friction+0.2, self.lateral_friction+0.2, 1])
-        # self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
+        # self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, 0.2, self.lateral_friction+0.2, 1])
         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
     def get_observation_upper_bound(self):
@@ -594,10 +669,7 @@ if __name__ == "__main__":
     render = True
     # render = False
 
-    on_rack = 0
-
-    # (init_joint, real_ub, real_lb) = None, None, None
-
+    on_rack = 1
     run = 0
 
     maxis = [[10, 10, 1000]]
@@ -639,14 +711,18 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        # env.set_mismatch({"faulty_motors": [5], "faulty_joints": [-1]})
-        env.set_mismatch({"friction": 0.2})
+        # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
+        # env.set_mismatch({"friction": 0})
+        # env.set_mismatch({"wind_force": -1})
+        env.set_mismatch({"load_weight": 1, "load_pos": 0})
+        # env.set_mismatch({"changing_friction": True})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
+        video_name = "video"
 
-        recorder = None
-        # recorder = VideoRecorder(env, "squat.mp4")
+        # recorder = None
+        recorder = VideoRecorder(env, video_name+".mp4")
 
         ub = 1
         lb = -1
@@ -656,7 +732,7 @@ if __name__ == "__main__":
 
         dt = 0.02
         R = 0
-        Obs, Acs = [init_obs], []
+        Obs, Acs, texts = [init_obs], [], []
 
         # f = "/home/haretis/Documents/SpotMicro_team/exp/results/spot_micro_03/23_03_2020_12_40_33_experiment/run_0/logs.pk"
         # with open(f, 'rb') as f:
@@ -674,8 +750,9 @@ if __name__ == "__main__":
         # actions = actions + reverse_actions
 
         degree = 0
-        t = trange(3, 300 + 3, desc='', leave=True)
-        # t = range(3, 500 + 3)
+        steps = 5
+        t = trange(3, steps + 3, desc='', leave=True)
+        # t = range(3, steps + 3)
         for i in t:
             if recorder is not None:
                 recorder.capture_frame()
@@ -713,15 +790,18 @@ if __name__ == "__main__":
             obs, reward, done, info = env.step(action)
             Obs.append(obs)
             Acs.append(action)
+            texts.append(info['text'])
             R += reward
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
-            if render and recorder is None:
-                time.sleep(0.02)
+            # if render and recorder is None:
+            #     time.sleep(0.02)
         O.append(np.copy(Obs))
         A.append(np.copy(Acs))
 
         if recorder is not None:
             recorder.capture_frame()
             recorder.close()
+            env.add_comments_to_video(texts=texts, path=".", video_name=video_name, dt=dt)
+

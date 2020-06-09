@@ -310,7 +310,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     trajectory = []
     traject_cost = 0
     model_error = 0
-    obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
+    obs, acs, reward, rewards, desired_torques, observed_torques, texts = [current_state], [], [], [], [], [], []
     past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
@@ -334,6 +334,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         acs.append(np.copy(a))
         reward.append(r)
         rewards.append(info['rewards'])
+        texts.append(info['text'])
         # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         past = np.append(past, [np.copy(x)], axis=0)
@@ -347,6 +348,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
+        env.add_comments_to_video(texts=texts, path=config['logdir'] + "/videos/",  dt=config['ctrl_time_step'],
+                                  video_name="env_" + str(env_index) + "_run_" + str(index_iter))
 
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))
@@ -383,6 +386,7 @@ def execute_online(env, steps, model, config, K, samples,
         samples['obs'].append(np.copy(next_state))
         samples['reward'].append(r)
         samples['rewards'].append(info['rewards'])
+        samples['texts'].append(info['text'])
         if done:
             break
     return traject_cost, done, past
@@ -695,7 +699,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         for index_iter in t:
             if config['online']:
                 samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
-                           'observed_torques': []}
+                           'observed_torques': [], 'texts': []}
                 if config['online_experts'] is None:
                     model_index = (index_iter % len(models))
                     env_index = int(index_iter / len(models)) % n_task
@@ -739,6 +743,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if recorder is not None:
                     recorder.close()
+                    env.add_comments_to_video(texts=samples['texts'], path=config['logdir'] + "/videos/",
+                                              video_name="run_" + str(local_index), dt=config["ctrl_time_step"])
 
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
@@ -842,7 +848,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 4,
+    "test_iterations": 3,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -875,8 +881,9 @@ config = {
     "hard_smoothing": 1,
 
     # logging
+    "render": False,
     "record_video": 1,
-    "video_recording_frequency": 50,
+    "video_recording_frequency": 25,
     "result_dir": "results",
     "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
@@ -994,45 +1001,50 @@ config['exp_suffix'] = "squat"
 config_params = []
 
 mismatches = [
-    {},
+
+    {"faulty_motors": [4], "faulty_joints": [0]},
+    {"faulty_motors": [4], "faulty_joints": [0.5]},
+
+    {"faulty_motors": [5], "faulty_joints": [-1.25]},
+    {"faulty_motors": [5], "faulty_joints": [-0.75]},
+
+    {"faulty_motors": [10], "faulty_joints": [0.5]},
+    {"faulty_motors": [10], "faulty_joints": [1]},
+
+    {"faulty_motors": [11], "faulty_joints": [-0.75]},
+    {"faulty_motors": [11], "faulty_joints": [-0.25]},
 ]
 
-# run_mismatches = []
+run_mismatches = []
 
-# yawdotreward = [0]
-# pitchingreward = [1]
-# squatreward = [0]
-# pitchreward = [0]
-# yawreward = [1]
+for _ in range(5):
+    for mismatch in mismatches:
+        run_mismatches.append([mismatch])
+        config_params.append({})
 
-# for i in range(1):
-#     run_mismatches.append([{'changing_friction': True}])
+
+# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
+# experts = ['1', '2']
+
+
+""" For decreasing friction """
+# for expert in experts:
 #     config_params.append({
-#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
-#         "xreward": 0,
-#         "yreward": 0,
-#         "zreward": 0,
-#         "rollreward": 1,
-#         "pitchreward": pitchreward[i],
-#         "yawreward": yawreward[i],
-#         "squatreward": squatreward[i],
-#         "popsize": 10000,
-#         'on_rack': 0,
-#         "yawdotreward": yawdotreward[i],
-#         "pitchingreward": pitchingreward[i],
+#         'pretrained_model': [path + "/run_" + str(expert)],
+#         "online_experts": [0], "render": True,
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
+#         'test_mismatches': [([0], [{'changing_friction': True}])]
 #     })
 
-
-path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
-experts = ['0', '1', '3', '6']
-
-for run in runs:
-    for expert in range(3):
-        config_params.append({
-            'pretrained_model': [path + run + "/run_" + str(expert)],
-            "online_experts": [0],
-            'test_mismatches': [([0], [{'changing_friction': True}])]
-        })
+""" For training course """
+# for expert in experts:
+#     config_params.append({
+#         'pretrained_model': [path + "/run_" + str(expert)],
+#         "online_experts": [0, 0, 0, 0],
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+#         'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+#     })
 
 
 def apply_config_params(conf, params):
@@ -1060,6 +1072,7 @@ def env_args_from_config(config):
         "lb": np.array(config["real_lb"]),
         "normalized_action": True,
         "obs_attributes": config['obs_attributes'],
+        "render": config['render'],
     }
 
 
