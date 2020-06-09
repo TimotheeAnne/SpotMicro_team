@@ -21,6 +21,11 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
 from gym import spaces
 import math
+import rospy
+from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Bool
+from sensor_msgs.msg import JointState
+from sensor_msgs.msg import Imu
 
 try:
     from pynput.keyboard import Key, Listener
@@ -531,6 +536,12 @@ class RealRobotEnv:
         self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
         self.desired_yaw_speed = 0.5
 
+        # ROS Initialization
+        self.joint_cmd_pub = rospy.Publisher('joint_cmd_position', Float64MultiArray, queue_size=10)
+        self.enable_motors_pub = rospy.Publisher('enable_motors', Bool, queue_size=10)
+        joint_state_sub = rospy.Subscriber('joint_states', JointState, self.jointStateCallback)
+        imu_sub = rospy.Subscriber('imu', Imu, self.imuCallback)
+
     def set_mismatch(self, mismatch):
         """ Apply virtual damage to the robot """
         # TODO set_mismatch but not now
@@ -543,7 +554,25 @@ class RealRobotEnv:
         Initialise the robot in the initial joints: init_joint and return the initial observation vector
         """
         # TODO reset should put the robot at the joint initial value self.init_joint and ruturn the observation vector instead of np.zeros(30)
-        obs = np.zeros(30)
+
+        if(hard_reset == True):
+
+            init_action_spot = self.rearrangeAction(self.init_joint)
+            init_joint_cmd = Float64MultiArray()
+            init_joint_cmd.data = init_action_spot
+
+            # only publish joint cmds when connected to ROS
+            try:
+                while not rospy.is_shutdown():
+                    self.enable_motors_pub.publish(True)
+                    self.joint_cmd_pub.publish(init_joint_cmd)
+
+                    # TODO Maybe add a sleep to ensure initial position reached
+
+            except rospy.ROSInterruptException:
+                pass
+
+        obs = self.joint_pos + self.joint_vel + self.rpy + self.rpydot
         return obs
 
     def compute_reward(self, obs):
@@ -585,21 +614,77 @@ class RealRobotEnv:
         output: (initial observation vector: array of size 30,
                  the reward: float,
                  episode termination: boolean,
-                 other info: dictionnary)
+                 other info: dictionary)
         apply the action and return the resulting observation vector
         """
+        action_spot = self.rearrangeAction(action)
+        joint_cmds = Float64MultiArray()
+        joint_cmds.data = action_spot
+
+        # only publish joint cmds when connected to ROS
+        try:
+            while not rospy.is_shutdown():
+                self.enable_motors_pub.publish(True)
+                self.joint_cmd_pub.publish(joint_cmds)
+
+                # TODO r.sleep() Not sure where to put this to sleep 100 hz
+
+        except rospy.ROSInterruptException:
+            pass
+
+
         a = np.copy(action)
         #  de-normalize the action
         a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
 
         # TODO step a is the desired joint position in radiant to send to the robot and return the current observation vector instead of np.zeros(30)
 
-        obs = np.zeros(30)
+        obs = self.joint_pos + self.joint_vel + self.rpy + self.rpydot
         reward, rewards = self.compute_reward(obs)
         done = self.compute_done(obs)
         info = {'rewards': rewards}
         return obs, reward, done, info
 
+    def jointStateCallback(self, joint_state_msg):
+
+        self.joint_pos = joint_state_msg.position
+        self.joint_vel = joint_state_msg.velocity
+
+    def imuCallback(self, imu_msg):
+
+        self.rpy = [imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z]
+        self.rpydot = [imu_msg.angular_velocity.x, imu_msg.angular_velocity.y, imu_msg.angular_velocity.z]
+
+    def rearrangeAction(self, action_tim):
+        """
+        input: action in Tim's form
+        ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
+       'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
+       'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
+       'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
+       ]
+
+        output: action in Jack's form
+        ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
+        'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint'
+        'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint'
+        'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',]
+        """
+        action_jack = [None]*12
+        action_jack[0] = action_tim[0]
+        action_jack[1] = action_tim[1]
+        action_jack[2] = action_tim[2]
+        action_jack[3] = action_tim[6]
+        action_jack[4] = action_tim[7]
+        action_jack[5] = action_tim[8]
+        action_jack[6] = action_tim[9]
+        action_jack[7] = action_tim[10]
+        action_jack[8] = action_tim[11]
+        action_jack[9] = action_tim[3]
+        action_jack[10] = action_tim[4]
+        action_jack[11] = action_tim[5]
+
+        return action_jack
 
 def main(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
@@ -671,6 +756,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     if not config['real_robot']:
         env = gym.make(*gym_args, **gym_kwargs)
     else:
+        rospy.init_node('pytorch_node') # Initialize ROS node
         env = RealRobotEnv()
     x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
@@ -1135,7 +1221,8 @@ if real_time:
     config["rollreward"] = 1
     config["pitchreward"] = 1
     config["yawreward"] = 1
-    path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp/results/"
+    #path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp/results/"
+    path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
     directory = ['27_03_2020_11_04_21_Slippery_floor'][0]
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"
     check_config(config)
