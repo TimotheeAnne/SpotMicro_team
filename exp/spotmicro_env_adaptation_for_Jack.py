@@ -668,7 +668,7 @@ class RealRobotEnv:
         ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
         'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint'
         'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint'
-        'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',]
+        'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint', ]
         """
         action_jack = [None]*12
         action_jack[0] = action_tim[0]
