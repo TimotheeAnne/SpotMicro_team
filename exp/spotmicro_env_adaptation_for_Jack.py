@@ -643,7 +643,7 @@ class RealRobotEnv:
                 r.sleep()
 
         except rospy.ROSInterruptException:
-            pass
+            pass #
 
 
         a = np.copy(action)
