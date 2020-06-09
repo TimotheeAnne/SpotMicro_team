@@ -237,7 +237,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     trajectory = []
     traject_cost = 0
 
-    obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
+    obs, acs, reward, rewards, desired_torques, observed_torques, texts = [current_state], [], [], [], [], [], []
     past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for t in range(steps):
         virtual_acs = list(past[-3]) + list(past[-2]) + list(past[-1])
@@ -261,6 +261,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         acs.append(np.copy(a))
         reward.append(r)
         rewards.append(info['rewards'])
+        texts.append(info['text'])
         past = np.append(past, [np.copy(x)], axis=0)
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
         current_state = next_state
@@ -270,7 +271,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
-
+        env.add_comments_to_video(texts=texts, path=config['logdir'] + "/videos/",  dt=config['ctrl_time_step'],
+                                  video_name="env_" + str(env_index) + "_run_" + str(index_iter))
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))
     samples['reward'].append(np.copy(reward))
@@ -306,6 +308,7 @@ def execute_online(env, steps, model, config, task_likelihoods, K, samples,
         samples['obs'].append(np.copy(next_state))
         samples['reward'].append(r)
         samples['rewards'].append(info['rewards'])
+        samples['texts'].append(info['text'])
         if done:
             break
     return traject_cost, done, past, current_state.copy()
@@ -458,7 +461,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
     config['max_action_jerk'] = config['max_action_jerk'] / alpha * config['ctrl_time_step'] ** 3
 
     for index_iter in tbar:
-        samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'likelihood': []}
+        samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'likelihood': [], 'texts': []}
         task_likelihoods = np.random.rand(n_training_tasks)
 
         if config['online']:
@@ -520,7 +523,8 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 
             if recorder is not None:
                 recorder.close()
-
+                env.add_comments_to_video(texts=samples['texts'], path=config['logdir'] + "/videos/", dt=config['ctrl_time_step'],
+                                          video_name="run_" + str(index_iter))
             if (len(samples['reward'])) == config['episode_length']:
                 best_reward = max(best_reward, np.sum(samples["reward"]))
             best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, x_index]) * 0.02)
