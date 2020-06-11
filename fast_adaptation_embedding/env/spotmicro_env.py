@@ -392,7 +392,6 @@ class SpotMicroEnv(gym.Env):
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
-            # cc = (1/0.36*((0.8-self.lateral_friction)*(0.4+self.lateral_friction)))
             cc = (0.8-self.lateral_friction)/0.9
             self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95*cc])
             self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1-0.8*cc])
@@ -605,9 +604,15 @@ class SpotMicroEnv(gym.Env):
             else:
                 self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
                                                        rgbaColor=MOTORS_COLORS[motor])
+        if self.changing_friction:
+            cc = (0.8 - self.lateral_friction) / 0.9
+            self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95 * cc])
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+        elif self.lateral_friction == 0.2:
+            self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, 1])
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 0])
 
-        # self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1, 0.2, self.lateral_friction+0.2, 1])
-        self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
     def get_observation_upper_bound(self):
         """Get the upper bound of the observation.
@@ -669,7 +674,7 @@ if __name__ == "__main__":
     render = True
     # render = False
 
-    on_rack = 1
+    on_rack = 0
     run = 0
 
     maxis = [[10, 10, 1000]]
@@ -711,11 +716,12 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
+        # env.set_mismatch({})
         # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
-        # env.set_mismatch({"friction": 0})
+        # env.set_mismatch({"friction": 0.2})
         # env.set_mismatch({"wind_force": -1})
-        env.set_mismatch({"load_weight": 1, "load_pos": 0})
-        # env.set_mismatch({"changing_friction": True})
+        # env.set_mismatch({"load_weight": 1, "load_pos": 0})
+        env.set_mismatch({"changing_friction": True})
 
         init_obs = env.reset(hard_reset=0)
         # time.sleep(10)
@@ -740,7 +746,7 @@ if __name__ == "__main__":
 
         actions = None
         # actions = []
-        # T, mini, maxi = 50, [0.5, -0.8], [0.8, -1.2]
+        # T, mini, maxi = 100, [0.6, -0.8], [-1., -0.]
         #
         # for tt in range(T):
         #     joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
@@ -749,8 +755,8 @@ if __name__ == "__main__":
         # reverse_actions.reverse()
         # actions = actions + reverse_actions
 
-        degree = 0
-        steps = 5
+        degree = 3
+        steps = 500
         t = trange(3, steps + 3, desc='', leave=True)
         # t = range(3, steps + 3)
         for i in t:
@@ -788,15 +794,15 @@ if __name__ == "__main__":
             if actions is not None:
                 action = actions[(i - 3) % len(actions)]
             obs, reward, done, info = env.step(action)
-            Obs.append(obs)
-            Acs.append(action)
+            Obs.append(list(obs))
+            Acs.append(list(action))
             texts.append(info['text'])
             R += reward
             past = np.append(past, [np.copy(x)], axis=0)
             if done:
                 break
-            # if render and recorder is None:
-            #     time.sleep(0.02)
+            if render and recorder is None:
+                time.sleep(0.02)
         O.append(np.copy(Obs))
         A.append(np.copy(Acs))
 
@@ -804,4 +810,8 @@ if __name__ == "__main__":
             recorder.capture_frame()
             recorder.close()
             env.add_comments_to_video(texts=texts, path=".", video_name=video_name, dt=dt)
-
+        import json
+        with open('action_sequence.json', 'w') as f:
+            json.dump(Acs, f)
+        with open('obs_sequence.json', 'w') as f:
+            json.dump(Obs, f)
