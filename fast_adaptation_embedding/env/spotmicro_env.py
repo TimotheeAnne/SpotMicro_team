@@ -22,8 +22,8 @@ from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 gym.logger.set_level(40)
 
-RENDER_HEIGHT = 360*3
-RENDER_WIDTH = 480*3
+RENDER_HEIGHT = 1080
+RENDER_WIDTH = 1920
 
 MOTOR_NAMES = ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
                'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
@@ -188,8 +188,14 @@ class SpotMicroEnv(gym.Env):
 
         flags = self.pybullet_client.URDF_USE_SELF_COLLISION
 
-        if (self.load_pos, self.load_weight) in [(0.07, 1), (0.07, 2), (-0.07, 1), (-0.07, 2)]:
+        if (self.load_pos, self.load_weight) == (0.06, 1):
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_front_1kg.urdf.xml'
+        elif (self.load_pos, self.load_weight) == (0.06, 2):
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_front_2kg.urdf.xml'
+        elif (self.load_pos, self.load_weight) == (-0.07, 1):
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_rear_1kg.urdf.xml'
+        elif (self.load_pos, self.load_weight) == (-0.07, 2):
+            urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_load_rear_2kg.urdf.xml'
         elif self.faulty_motors == [3, 4, 5]:
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_tripod.urdf.xml'
         else:
@@ -354,14 +360,17 @@ class SpotMicroEnv(gym.Env):
         if 'load_weight' in self.active_mismatch:
             text += "{:1.1f}".format(self.load_weight) + "kg load at x=" + "{:1.1f}".format(self.load_pos) + "m - "
         if 'faulty_motors' in self.active_mismatch:
-            for motor, value in zip(self.faulty_motors, self.faulty_joints):
-                name = ['Front Left Shoulder', 'Front Left Hip', 'Front Left Knee',
-                 'Front Right Shoulder', 'Front Right Hip', 'Front Right Knee',
-                 'Rear Left Shoulder', 'Rear Left Hip', 'Rear Left Knee',
-                 'Rear Right Shoulder', 'Rear Right Hip', 'Rear Right Knee',
-                 ]
-                sign = "+" if value > self.init_joint[motor] else ''
-                text += "Blocked " + name[motor] + " at " + sign + "{:2.0f}".format((value-self.init_joint[motor])*180/np.pi) + "° - "
+            if self.faulty_motors == [3, 4, 5]:
+                text += "Missing front right leg -"
+            else:
+                for motor, value in zip(self.faulty_motors, self.faulty_joints):
+                    name = ['Front Left Shoulder', 'Front Left Hip', 'Front Left Knee',
+                     'Front Right Shoulder', 'Front Right Hip', 'Front Right Knee',
+                     'Rear Left Shoulder', 'Rear Left Hip', 'Rear Left Knee',
+                     'Rear Right Shoulder', 'Rear Right Hip', 'Rear Right Knee',
+                     ]
+                    sign = "+" if value > self.init_joint[motor] else ''
+                    text += "Blocked " + name[motor] + " at " + sign + "{:2.0f}".format((value-self.init_joint[motor])*180/np.pi) + "° - "
         text += "Distance traveled: " + "{:2.2f}".format(d) + "m"
         return text
 
@@ -389,6 +398,7 @@ class SpotMicroEnv(gym.Env):
         return bodyOrn, linearVel, angularVel
 
     def step(self, action):
+        # time.sleep(1)
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
@@ -460,7 +470,7 @@ class SpotMicroEnv(gym.Env):
                                                                  p.getQuaternionFromEuler(
                                                                      [1.57, 0, 1.48 + self.wind_angle]))
 
-        if (self.load_pos, self.load_weight) not in [(0, 0), (0.07, 1), (0.07, 2), (-0.07, 1), (-0.07, 2)]:
+        if (self.load_pos, self.load_weight) not in [(0, 0), (0.06, 1), (0.06, 2), (-0.07, 1), (-0.07, 2)]:
             external_force = [0, 0, -9.81 * self.load_weight]
             [x_b, y_b, z_b], body_orient = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
             x = x_b + self.load_pos
@@ -610,8 +620,9 @@ class SpotMicroEnv(gym.Env):
             self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
             self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         elif self.lateral_friction == 0.2:
-            self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, 1])
-            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 0])
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., 1])
+        else:
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id, rgbaColor=[1., 1., 1., 1])
 
 
     def get_observation_upper_bound(self):
@@ -720,10 +731,10 @@ if __name__ == "__main__":
         # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
         # env.set_mismatch({"friction": 0.2})
         # env.set_mismatch({"wind_force": -1})
-        # env.set_mismatch({"load_weight": 1, "load_pos": 0})
-        env.set_mismatch({"changing_friction": True})
+        env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
+        # env.set_mismatch({"changing_friction": True})
 
-        init_obs = env.reset(hard_reset=0)
+        init_obs = env.reset(hard_reset=1)
         # time.sleep(10)
         video_name = "video"
 
@@ -754,6 +765,7 @@ if __name__ == "__main__":
         # reverse_actions = actions.copy()
         # reverse_actions.reverse()
         # actions = actions + reverse_actions
+
 
         degree = 3
         steps = 500
