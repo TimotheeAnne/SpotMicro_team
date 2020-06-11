@@ -663,15 +663,15 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             }, f)
         with open(res_dir + "/costs_task_" + str(env_index) + ".txt", "a+") as f:
             f.write(str(c) + "\n")
+    if config['iterations'] > 0:
+        print("Finally Saving trajectories..")
+        np.save(res_dir + "/trajectories.npy", data)
 
-    print("Finally Saving trajectories..")
-    np.save(res_dir + "/trajectories.npy", data)
+        print("Finally Saving model..")
 
-    print("Finally Saving model..")
-
-    for env_index in range(n_task):
-        os.makedirs(res_dir + "/models/ensemble_" + str(env_index))
-        models[env_index].save(file_path=res_dir + "/models/ensemble_" + str(env_index) + "/")
+        for env_index in range(n_task):
+            os.makedirs(res_dir + "/models/ensemble_" + str(env_index))
+            models[env_index].save(file_path=res_dir + "/models/ensemble_" + str(env_index) + "/")
 
     if config['test_mismatches'] is not None:
         test_mismatches = config['test_mismatches']
@@ -848,7 +848,7 @@ config = {
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 3,
+    "test_iterations": 5,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -997,36 +997,33 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "squat"
+config['exp_suffix'] = "nice_video"
 config_params = []
 
-mismatches = [
-
-    {"faulty_motors": [4], "faulty_joints": [0]},
-    {"faulty_motors": [4], "faulty_joints": [0.5]},
-
-    {"faulty_motors": [5], "faulty_joints": [-1.25]},
-    {"faulty_motors": [5], "faulty_joints": [-0.75]},
-
-    {"faulty_motors": [10], "faulty_joints": [0.5]},
-    {"faulty_motors": [10], "faulty_joints": [1]},
-
-    {"faulty_motors": [11], "faulty_joints": [-0.75]},
-    {"faulty_motors": [11], "faulty_joints": [-0.25]},
-]
-
+# mismatches = [
+#
+#     {"faulty_motors": [4], "faulty_joints": [0]},
+#     {"faulty_motors": [4], "faulty_joints": [0.5]},
+#
+#     {"faulty_motors": [5], "faulty_joints": [-1.25]},
+#     {"faulty_motors": [5], "faulty_joints": [-0.75]},
+#
+#     {"faulty_motors": [10], "faulty_joints": [0.5]},
+#     {"faulty_motors": [10], "faulty_joints": [1]},
+#
+#     {"faulty_motors": [11], "faulty_joints": [-0.75]},
+#     {"faulty_motors": [11], "faulty_joints": [-0.25]},
+# ]
+#
 run_mismatches = []
 
-for _ in range(5):
+for _ in range(1):
     for mismatch in mismatches:
-        run_mismatches.append([mismatch])
+        run_mismatches.append([{"load_weight": 2, "load_pos": 0.06}])
         config_params.append({})
 
-
-# path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
-# experts = ['1', '2']
-
 
 """ For decreasing friction """
 # for expert in experts:
@@ -1037,13 +1034,28 @@ for _ in range(5):
 #         'test_mismatches': [([0], [{'changing_friction': True}])]
 #     })
 
-""" For training course """
-# for expert in experts:
+# mismatches = [
+    # ([0], [{'friction': 0.2}]),
+    # ([0], [{"wind_force": 2}]),
+    # ([0], [{"wind_force": -1}]),
+    # ([0], [{"faulty_motors": [5], "faulty_joints": [-1]}]),
+    # ([0], [{"faulty_motors": [10], "faulty_joints": [1]}]),
+    # ([0], [{"faulty_motors": [11], "faulty_joints": [0]}]),
+    # ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
+    # ([0], [{"load_weight": 2, "load_pos": 0.07}]),
+# ]
+
+# tripod_path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/tripod/run_0"
+# tripod_mismatch = ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
+#
+# experts = ['9']
+# """ For training course """
+# for i, expert in enumerate(experts):
 #     config_params.append({
-#         'pretrained_model': [path + "/run_" + str(expert)],
-#         "online_experts": [0, 0, 0, 0],
+#         'pretrained_model': [path + "/run_" + expert],
+#         "online_experts": [0],
 #         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
-#         'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+#         'test_mismatches': [mismatches[i]]
 #     })
 
 
