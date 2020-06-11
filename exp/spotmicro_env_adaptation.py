@@ -238,7 +238,7 @@ def process_data(data):
 
 
 def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, config):
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=config['hard_reset'])
     max_vel, max_acc, max_jerk, max_torque_jerk = config['max_action_velocity'], config['max_action_acceleration'], \
                                                   config['max_action_jerk'], config['max_torque_jerk']
     lb, ub = config['lb'], config['ub']
@@ -306,7 +306,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
             recorder = None
     else:
         recorder = None
-    current_state = env.reset(hard_reset=True)
+    current_state = env.reset(hard_reset=config['hard_reset'])
     trajectory = []
     traject_cost = 0
     model_error = 0
@@ -406,7 +406,7 @@ def execute_real_time(env, model, config, K):
     def on_press(key):
         if key == Key.left:
             env.set_mismatch(mismatch)
-            env.reset(hard_reset=True)
+            env.reset(hard_reset=config['hard_reset'])
             past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
         elif key == Key.right:
             event[0] = None
@@ -716,7 +716,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                 c = 0
                 init_mismatch = test_mismatches[env_index][1][0]
                 env.set_mismatch(init_mismatch)
-                current_state = env.reset(hard_reset=True)
+                current_state = env.reset(hard_reset=config['hard_reset'])
                 past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
                 n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
                 for adapt_steps in range(n_adapt_steps):
@@ -853,6 +853,7 @@ config = {
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
     "on_rack": False,
+    'hard_reset': False,
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
     "init_joint": [0., 0.6, -1.] * 4,
     "real_ub": [0.1, 0.8, -0.8] * 4,
@@ -1020,7 +1021,7 @@ run_mismatches = []
 for _ in range(1):
     for mismatch in mismatches:
         run_mismatches.append([{"load_weight": 2, "load_pos": 0.06}])
-        config_params.append({})
+        config_params.append({'hard_reset': True})
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
