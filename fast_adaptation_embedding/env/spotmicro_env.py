@@ -200,6 +200,7 @@ class SpotMicroEnv(gym.Env):
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2_tripod.urdf.xml'
         else:
             urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
+            # urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v3.urdf.xml'
 
         quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
                                                   self.init_oritentation,
@@ -685,7 +686,7 @@ if __name__ == "__main__":
     render = True
     # render = False
 
-    on_rack = 0
+    on_rack = 1
     run = 0
 
     maxis = [[10, 10, 1000]]
@@ -727,11 +728,11 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        # env.set_mismatch({})
+        env.set_mismatch({})
         # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
         # env.set_mismatch({"friction": 0.2})
         # env.set_mismatch({"wind_force": -1})
-        env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
+        # env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
         # env.set_mismatch({"changing_friction": True})
 
         init_obs = env.reset(hard_reset=1)
@@ -755,16 +756,16 @@ if __name__ == "__main__":
         # with open(f, 'rb') as f:
         #     data = pickle.load(f)
 
-        actions = None
-        # actions = []
-        # T, mini, maxi = 100, [0.6, -0.8], [-1., -0.]
-        #
-        # for tt in range(T):
-        #     joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
-        #     actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
-        # reverse_actions = actions.copy()
-        # reverse_actions.reverse()
-        # actions = actions + reverse_actions
+        # actions = None
+        actions = []
+        T, mini, maxi = 100, [0.6, -0.8], [-1., -0.]
+        # T, mini, maxi = 100, [0., 0.], [0., 0.]
+        for tt in range(T):
+            joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
+            actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
+        reverse_actions = actions.copy()
+        reverse_actions.reverse()
+        actions = actions + reverse_actions
 
 
         degree = 3
