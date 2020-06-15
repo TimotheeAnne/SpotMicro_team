@@ -615,7 +615,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 300,
+    "iterations": 10,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -646,7 +646,7 @@ config = {
     "soft_smoothing": 0,
     "hard_smoothing": 1,
     "record_video": 1,
-    "video_recording_frequency": 20,
+    "video_recording_frequency": 1,
     "online_damage_probability": 0.0,
     "sample_model": False,
 
