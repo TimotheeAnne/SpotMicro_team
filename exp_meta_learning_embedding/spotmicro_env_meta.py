@@ -832,10 +832,21 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    {"faulty_motors": [1], "faulty_joints": [0]},
-    {"faulty_motors": [2], "faulty_joints": [-1]},
-    {"faulty_motors": [7], "faulty_joints": [1]},
-    {"faulty_motors": [8], "faulty_joints": [0]},
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0.25]},
+                          {'faulty_motors': [10], 'faulty_joints': [0.75]},
+                          {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [10], 'faulty_joints': [0.25]},
+                          {'faulty_motors': [4], 'faulty_joints': [0.75]},
+                          {'faulty_motors': [11], 'faulty_joints': [0]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+                          {'faulty_motors': [5], 'faulty_joints': [-1.6]},
+                          {'faulty_motors': [10], 'faulty_joints': [1.25]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [5], 'faulty_joints': [-0.3]},
+                          {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+                          {'faulty_motors': [4], 'faulty_joints': [-0.2]}]),
 ]
 
 test_mismatches = []
@@ -844,7 +855,7 @@ config_params = []
 adapt_steps = [None]
 embedding_sizes = [10]
 epochs = [5]
-data_dirs = ["0", '1', '2', '3', '4']
+data_dirs = ["0", '1']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -853,9 +864,9 @@ for a in adapt_steps:
                     for mismatch in mismatches:
                         config_params.append(
                             {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                             "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 500,
-                             'training_tasks_index': [0, 1, 2, 3, 4], 'online': False, 'start_from_raw': False,
-                             "data_dir": "data/spotmicro/4_motor_damaged_"+ data_dir})
+                             "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
+                             'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7, 8], 'online': True, 'start_from_raw': False,
+                             "data_dir": "data/spotmicro/8_damages_" + data_dir})
                         test_mismatches.append(mismatch)
 
 n_run = len(config_params)
