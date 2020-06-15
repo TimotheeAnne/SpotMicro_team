@@ -623,8 +623,7 @@ config = {
     "successive_steps": 50,
     "stop_adapatation_step": 10000,
     "init_state": None,  # Must be updated before passing config as param
-    "action_dim": 12,
-    "action_space": ['S&E', 'Motor'][1],
+    "action_dim": 12, "action_space": ['S&E', 'Motor'][1],
     "init_joint": [0., 0.6, -1.] * 4,
     "real_ub": [0.1, 0.8, -0.8] * 4,
     "real_lb": [-0.1, 0.4, -1.2] * 4,
@@ -865,7 +864,7 @@ for a in adapt_steps:
                         config_params.append(
                             {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
                              "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
-                             'training_tasks_index': [0, 1, 2, 3, 4, 5, 6, 7, 8], 'online': True, 'start_from_raw': False,
+                             'training_tasks_index': [1, 2, 3, 4, 5, 6, 7, 8], 'online': True, 'start_from_raw': False,
                              "data_dir": "data/spotmicro/8_damages_" + data_dir})
                         test_mismatches.append(mismatch)
 
