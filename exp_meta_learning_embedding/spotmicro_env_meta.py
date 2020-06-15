@@ -631,7 +631,7 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same control1ler
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
