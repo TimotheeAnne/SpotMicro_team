@@ -864,6 +864,7 @@ for a in adapt_steps:
                         config_params.append(
                             {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
                              "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
+                             "learning_rate": 1e-3,
                              'training_tasks_index': [1, 2, 3, 4, 5, 6, 7, 8], 'online': True, 'start_from_raw': False,
                              "data_dir": "data/spotmicro/8_damages_" + data_dir})
                         test_mismatches.append(mismatch)
