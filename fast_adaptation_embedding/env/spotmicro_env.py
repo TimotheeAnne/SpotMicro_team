@@ -400,6 +400,7 @@ class SpotMicroEnv(gym.Env):
 
     def step(self, action):
         # time.sleep(1)
+        print(self.lateral_friction)
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
@@ -620,10 +621,12 @@ class SpotMicroEnv(gym.Env):
             self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95 * cc])
             self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
             self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
-        elif self.lateral_friction == 0.2:
-            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., 1])
+        elif self.lateral_friction < 0.4:
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., ])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
         else:
             self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id, rgbaColor=[1., 1., 1., 1])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
 
     def get_observation_upper_bound(self):
@@ -686,7 +689,7 @@ if __name__ == "__main__":
     render = True
     # render = False
 
-    on_rack = 1
+    on_rack = 0
     run = 0
 
     maxis = [[10, 10, 1000]]
@@ -730,7 +733,7 @@ if __name__ == "__main__":
     for iter in tqdm(range(1)):
         env.set_mismatch({})
         # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
-        # env.set_mismatch({"friction": 0.2})
+        # env.set_mismatch({"friction": 0.8})
         # env.set_mismatch({"wind_force": -1})
         # env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
         # env.set_mismatch({"changing_friction": True})
@@ -739,8 +742,8 @@ if __name__ == "__main__":
         # time.sleep(10)
         video_name = "video"
 
-        # recorder = None
-        recorder = VideoRecorder(env, video_name+".mp4")
+        recorder = None
+        # recorder = VideoRecorder(env, video_name+".mp4")
 
         ub = 1
         lb = -1
@@ -756,16 +759,16 @@ if __name__ == "__main__":
         # with open(f, 'rb') as f:
         #     data = pickle.load(f)
 
-        # actions = None
-        actions = []
-        T, mini, maxi = 100, [0.6, -0.8], [-1., -0.]
-        # T, mini, maxi = 100, [0., 0.], [0., 0.]
-        for tt in range(T):
-            joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
-            actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
-        reverse_actions = actions.copy()
-        reverse_actions.reverse()
-        actions = actions + reverse_actions
+        actions = None
+        # actions = []
+        # T, mini, maxi = 100, [0.6, -0.8], [-1., -0.]
+        # # T, mini, maxi = 100, [0., 0.], [0., 0.]
+        # for tt in range(T):
+        #     joints = np.array([0., mini[0]+tt*(maxi[0]-mini[0])/T, mini[1]+tt*(maxi[1]-mini[1])/T] * 4)
+        #     actions.append((joints - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb))
+        # reverse_actions = actions.copy()
+        # reverse_actions.reverse()
+        # actions = actions + reverse_actions
 
 
         degree = 3
