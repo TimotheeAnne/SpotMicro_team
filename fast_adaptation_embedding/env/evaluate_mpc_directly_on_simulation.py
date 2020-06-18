@@ -98,8 +98,8 @@ def add_comments_to_video(texts, distance, path, video_name, dt=0.02):
 
 
 if __name__ == "__main__":
-    # render = False
-    render = True
+    render = False
+    # render = True
 
     config = {
         "n_run": 2,
@@ -175,7 +175,6 @@ if __name__ == "__main__":
                 recorder.capture_frame()
             action = best_candidate[0]
             current_state, _, _, _ = env.step(action)
-            print(np.argmax(evaluations), current_state)
             A.append(np.copy(action))
             S.append(np.copy(current_state))
             distance += config['dt'] * current_state[-2]
