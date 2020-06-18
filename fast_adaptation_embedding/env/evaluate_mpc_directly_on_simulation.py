@@ -1,3 +1,9 @@
+import os, inspect
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(os.path.dirname(currentdir))
+os.sys.path.insert(0, parentdir)
+
 import gym
 import time
 import pickle
@@ -7,7 +13,6 @@ import fast_adaptation_embedding.env
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from pybullet_envs.bullet import minitaur_gym_env
 from datetime import datetime
-import os 
 import json
 
 
