@@ -5,6 +5,9 @@
     <orderEntry type="jdk" jdkName="Python 3.7 (pytorch)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="simulations" />
+    <orderEntry type="module" module-name="catkin_ws" />
+    <orderEntry type="module" module-name="OpenCR" />
+    <orderEntry type="module" module-name="pybullet" />
   </component>
   <component name="PyDocumentationSettings">
     <option name="format" value="PLAIN" />

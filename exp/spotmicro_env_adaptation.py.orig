@@ -19,16 +19,6 @@ import os
 import argparse
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tqdm import tqdm, trange
-from gym import spaces
-import math
-import rospy
-from std_msgs.msg import Float64MultiArray
-from std_msgs.msg import Bool
-from sensor_msgs.msg import JointState
-from sensor_msgs.msg import Imu
-from scipy.spatial.transform import Rotation as R
-import json
-
 
 try:
     from pynput.keyboard import Key, Listener
@@ -254,6 +244,8 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
     lb, ub = config['lb'], config['ub']
     trajectory = []
     traject_cost = 0
+    recorder = None
+    # recorder = VideoRecorder(env, config['logdir'] + "/videos/random_"+str(index_iter)+".mp4")
     obs, acs, reward, rewards, desired_torques, observed_torques = [current_state], [], [], [], [], []
     past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
     for i in range(3, steps + 3):
@@ -271,12 +263,15 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
         for k in range(K):
             next_state, rew, done, info = env.step(a)
             r += rew
+            if recorder is not None:
+                recorder.capture_frame()
         obs.append(next_state)
         acs.append(a)
         if config['hard_smoothing']:
             past = np.append(past, [np.copy(x)], axis=0)
         reward.append(r)
         rewards.append(info['rewards'])
+        # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         desired_torques = []
         trajectory.append([current_state.copy(), a.copy(), next_state - current_state, -r])
@@ -284,7 +279,9 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
         traject_cost += -r
         if done:
             break
-
+    if recorder is not None:
+        recorder.capture_frame()
+        recorder.close()
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))
     samples['reward'].append(np.copy(reward))
@@ -510,220 +507,6 @@ def extract_action_seq(data):
     return np.array(actions)
 
 
-class RealRobotEnv:
-    """ Class for the interface between the python code and the real robot """
-
-    def __init__(self):
-        """
-        the observation is of size 30:
-        q: the 12 joints positions in radian, in the order:
-                  ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
-                   'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
-                   'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
-                   'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
-                   ]
-        qdot: the 12 joints velocity, smae order
-        rpy: roll, pitch and yaw of the base
-        rpydot: the roll, pitch and yaw rate of the base
-        """
-        self.obs_attributes = ['q', 'qdot', 'rpy', 'rpydot']
-        self.obs_attributes_index = {'q': 0, 'qdot': 12, 'rpy': 15, 'rpydot': 18}
-        self.metadata = {}
-        self.mismatch = None
-        self.init_joint = np.array([0., 0.6, -0.8] * 4)
-        self.ub = np.array([0.1, 0.8, -0.8] * 4)
-        self.lb = np.array([-0.1, 0.4, -1.2] * 4)
-        self._action_bound = 1
-        action_dim = 12
-        action_high = np.array([self._action_bound] * action_dim)
-        self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
-        self.desired_yaw_speed = 0.5
-
-        # ROS Initialization
-        self.joint_cmd_pub = rospy.Publisher('joint_cmd_position', Float64MultiArray, queue_size=10)
-        self.enable_motors_pub = rospy.Publisher('enable_motors', Bool, queue_size=10)
-        joint_state_sub = rospy.Subscriber('joint_states', JointState, self.jointStateCallback)
-        imu_sub = rospy.Subscriber('imu', Imu, self.imuCallback)
-
-        self.joint_pos = np.array([0., 0.6, -0.8] * 4)
-        self.joint_vel = np.array(12)
-        self.rpy = np.array(3)
-        self.rpydot = np.array(3)
-
-        rospy.sleep(2)
-
-    def set_mismatch(self, mismatch):
-        """ Apply virtual damage to the robot """
-        # TODO set_mismatch but not now
-        self.mismatch = mismatch
-
-    def reset(self, hard_reset=False):
-        """
-        input: hard_reset: boolean, for compatibility
-        output: initial observation vector, array of size 30
-        Initialise the robot in the initial joints: init_joint and return the initial observation vector
-        """
-        # TODO reset should put the robot at the joint initial value self.init_joint and ruturn the observation vector instead of np.zeros(30)
-
-        if(hard_reset == True):
-
-            init_action_spot = self.rearrangeAction(self.init_joint)
-            init_joint_cmd = Float64MultiArray()
-            init_joint_cmd.data = init_action_spot
-
-            # only publish joint cmds when connected to ROS
-            try:
-                if not rospy.is_shutdown():
-
-                    self.enable_motors_pub.publish(True)
-                    self.joint_cmd_pub.publish(init_joint_cmd)
-
-                    # sleep for 10 seconds
-                    print("Sleeping for 3 s")
-                    rospy.sleep(2)
-
-
-            except rospy.ROSInterruptException:
-                pass
-
-        obs = np.concatenate([self.joint_pos, self.joint_vel, self.rpy, self.rpydot])
-        return obs
-
-    def compute_reward(self, obs):
-        """
-        input: observation: array of size 30
-        output: the sum reward: float,
-                the list of all rewards: array of size 3
-        compute the reward of the current observation vector
-        """
-        index_rpy = self.obs_attributes_index['rpy']
-        [r, p] = obs[index_rpy:index_rpy + 2]
-        ydot = obs[self.obs_attributes_index['rpydot'] + 2]
-
-        roll_reward = -r ** 2
-        pitch_reward = -p ** 2
-        yaw_dot_reward = (ydot - self.desired_yaw_speed) ** 2
-
-        reward_sum = roll_reward + pitch_reward + yaw_dot_reward
-        return reward_sum, [pitch_reward, roll_reward, yaw_dot_reward]
-
-    def compute_done(self, obs):
-        """
-        input: observation: array of size 30
-        output: episode termination: boolean
-        evaluate if the current episode must stop
-        """
-        index = self.obs_attributes_index['rpy']
-        [r, p] = obs[index:index + 2]
-        return abs(r) > math.pi / 4 or abs(p) > math.pi / 4
-
-    def step(self, action):
-        """
-        input: action: array of size 12 in order
-                  ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
-                   'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
-                   'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
-                   'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
-                   ]
-        output: (initial observation vector: array of size 30,
-                 the reward: float,
-                 episode termination: boolean,
-                 other info: dictionary)
-        apply the action and return the resulting observation vector
-        """
-        action_spot = self.rearrangeAction(action)
-
-        joint_cmds = Float64MultiArray()
-        joint_cmds.data = action_spot
-
-        # only publish joint cmds when connected to ROS
-        r = rospy.Rate(50)  # 50hz
-        try:
-            if not rospy.is_shutdown():
-                self.enable_motors_pub.publish(True)
-                self.joint_cmd_pub.publish(joint_cmds)
-
-                r.sleep()
-
-        except rospy.ROSInterruptException:
-            pass
-
-
-        a = np.copy(action)
-        #  de-normalize the action
-        a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
-
-        # TODO step a is the desired joint position in radiant to send to the robot and return the current observation vector instead of np.zeros(30)
-
-        obs = np.concatenate([self.joint_pos, self.joint_vel, self.rpy, self.rpydot])
-        reward, rewards = self.compute_reward(obs)
-        done = self.compute_done(obs)
-        info = {'rewards': rewards}
-        return obs, reward, done, info
-
-    def jointStateCallback(self, joint_state_msg):
-
-        self.joint_pos = np.array(joint_state_msg.position)
-        self.joint_pos = self.rearrangeState(self.joint_pos)
-        self.joint_vel = np.array(joint_state_msg.velocity)
-        self.joint_vel = self.rearrangeState(self.joint_vel)
-
-    def imuCallback(self, imu_msg):
-
-        r = R.from_quat([imu_msg.orientation.x, imu_msg.orientation.y, imu_msg.orientation.z, imu_msg.orientation.w])
-        self.rpy = np.array(r.as_euler('xyz'))
-        self.rpydot = np.array([imu_msg.angular_velocity.x, imu_msg.angular_velocity.y, imu_msg.angular_velocity.z])
-
-
-    def rearrangeAction(self, action_env):
-        """
-        input: action in Tim's form
-        ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
-       'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint',
-       'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint',
-       'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint',
-       ]
-
-        output: action in Jack's form
-        ['front_left_shoulder_joint', 'front_left_thigh_joint', 'front_left_calf_joint',
-        'rear_left_shoulder_joint', 'rear_left_thigh_joint', 'rear_left_calf_joint'
-        'rear_right_shoulder_joint', 'rear_right_thigh_joint', 'rear_right_calf_joint'
-        'front_right_shoulder_joint', 'front_right_thigh_joint', 'front_right_calf_joint', ]
-        """
-        action_real_robot = np.zeros(12)
-        action_real_robot[0] = action_env[0]
-        action_real_robot[1] = action_env[1]
-        action_real_robot[2] = action_env[2]
-        action_real_robot[3] = action_env[6]
-        action_real_robot[4] = action_env[7]
-        action_real_robot[5] = action_env[8]
-        action_real_robot[6] = -action_env[9]
-        action_real_robot[7] = action_env[10]
-        action_real_robot[8] = action_env[11]
-        action_real_robot[9] = -action_env[3]
-        action_real_robot[10] = action_env[4]
-        action_real_robot[11] = action_env[5]
-
-        return action_real_robot
-
-    def rearrangeState(self, state_real_robot):
-
-        state_env = np.zeros(12)
-        state_env[0] = state_real_robot[0]
-        state_env[1] = state_real_robot[1]
-        state_env[2] = state_real_robot[2]
-        state_env[3] = -state_real_robot[9]
-        state_env[4] = state_real_robot[10]
-        state_env[5] = state_real_robot[11]
-        state_env[6] = state_real_robot[3]
-        state_env[7] = state_real_robot[4]
-        state_env[8] = state_real_robot[5]
-        state_env[9] = -state_real_robot[6]
-        state_env[10] = state_real_robot[7]
-        state_env[11] = state_real_robot[8]
-
-        return state_env
-
 def main(gym_args, mismatches, config, gym_kwargs={}):
     """---------Prepare the directories------------------"""
     if config['exp_dir'] is None:
@@ -791,12 +574,10 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         np.save(res_dir + '/mismatches.npy', mismatches)
 
-    if not config['real_robot']:
-        env = gym.make(*gym_args, **gym_kwargs)
-    else:
-        env = RealRobotEnv()
+    env = gym.make(*gym_args, **gym_kwargs)
     x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
+
     t = trange(config["iterations"] * n_task, desc='', leave=True)
     for index_iter in t:
         env_index = int(index_iter % n_task)
@@ -823,6 +604,9 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             all_costs.append(c)
         else:
             '''------------Update models------------'''
+            x, y, high, low = process_data(data[env_index])
+            models[env_index] = train_ensemble_model(train_in=x, train_out=y, sampling_size=-1, config=config,
+                                                     model=models[env_index])
             trajectory, c = execute(env=env,
                                     init_state=config["init_state"],
                                     model=models[env_index],
@@ -849,10 +633,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
             all_action_seq.append(extract_action_seq(trajectory))
             all_costs.append(c)
-
-        x, y, high, low = process_data(data[env_index])
-        models[env_index] = train_ensemble_model(train_in=x, train_out=y, sampling_size=-1, config=config,
-                                                 model=models[env_index])
 
         traj_obs[env_index].extend(samples["obs"])
         traj_acs[env_index].extend(samples["acs"])
@@ -931,17 +711,14 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     recorder = None
                 c = 0
                 init_mismatch = test_mismatches[env_index][1][0]
-
                 env.set_mismatch(init_mismatch)
                 current_state = env.reset(hard_reset=True)
                 past = np.array([(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb) for _ in range(3)])
-
                 n_adapt_steps = int(config["episode_length"] / config['successive_steps'])
                 for adapt_steps in range(n_adapt_steps):
                     steps = adapt_steps * config['successive_steps']
                     if steps in test_mismatches[env_index][0]:
                         mismatch_index = test_mismatches[env_index][0].index(steps)
-
                         env.set_mismatch(test_mismatches[env_index][1][mismatch_index])
                         model_index = config['online_experts'][mismatch_index]
                     trajectory = []
@@ -981,7 +758,6 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
             else:
                 '''Pick a random environment'''
                 env_index = int(index_iter / len(models)) % n_task
-
                 env.set_mismatch(test_mismatches[env_index])
                 model_index = index_iter % len(models)
                 samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [],
@@ -1059,15 +835,14 @@ def real_time_test(gym_args, mismatches, config, gym_kwargs={}):
 
 config = {
     # exp parameters:
-    "real_robot": True,
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 1,
-    "random_episodes": 1,  # per task
+    "iterations": 300,
+    "random_episodes": 25,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "test_mismatches": None,
     "online": True,
     "successive_steps": 50,
-    "test_iterations": 4,
+    "test_iterations": 10,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
     "action_space": ['S&E', 'Motor'][1],
@@ -1081,16 +856,16 @@ config = {
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same controller
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
     "desired_speed": 0.5,
-    "xreward": 0,
-    "yreward": 0,
-    "zreward": 0,
+    "xreward": 1,
+    "yreward": 1,
+    "zreward": 1,
     "rollreward": 1,
     "pitchreward": 1,
-    "yawreward": 0,
+    "yawreward": 1,
     "squatreward": 0,
-    "yawdotreward": 1,
+    "yawdotreward": 0,
     "pitchingreward": 0,
     "action_norm_weight": 0.0,
     "action_vel_weight": 0,  # 0.05 seems working
@@ -1101,7 +876,7 @@ config = {
 
     # logging
     "record_video": 1,
-    "video_recording_frequency": 50,
+    "video_recording_frequency": 1,
     "result_dir": "results",
     "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
@@ -1116,8 +891,8 @@ config = {
     # Ensemble model params
     "cuda": True,
     "ensemble_epoch": 5,
-    "ensemble_dim_in": None,
-    "ensemble_dim_out": None,
+    "ensemble_dim_in": 32 + 12 + 1,
+    "ensemble_dim_out": 32 + 1,
     "ensemble_hidden": [256, 256],
     "hidden_activation": "relu",
     "ensemble_cuda": True,
@@ -1215,11 +990,56 @@ args = ["SpotMicroEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "real_robot"
+config['exp_suffix'] = "squat"
+config_params = []
 
 mismatches = [
     {},
 ]
+
+# run_mismatches = []
+
+# yawdotreward = [0]
+# pitchingreward = [1]
+# squatreward = [0]
+# pitchreward = [0]
+# yawreward = [1]
+
+# for i in range(1):
+#     run_mismatches.append([{'changing_friction': True}])
+#     config_params.append({
+#         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'z'],
+#         "xreward": 0,
+#         "yreward": 0,
+#         "zreward": 0,
+#         "rollreward": 1,
+#         "pitchreward": pitchreward[i],
+#         "yawreward": yawreward[i],
+#         "squatreward": squatreward[i],
+#         "popsize": 10000,
+#         'on_rack': 0,
+#         "yawdotreward": yawdotreward[i],
+#         "pitchingreward": pitchingreward[i],
+#     })
+
+
+<<<<<<< HEAD
+#path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run"
+runs = ['0', '1', '2', '3', '4']
+=======
+path = "/home/timothee/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
+experts = ['0', '1', '3', '6']
+>>>>>>> 5eff1681f71f0d3309b795ee68776467f3ad53ca
+
+
+for expert in experts:
+    config_params.append({
+        'pretrained_model': [path + "/run_" + str(expert)],
+        "online_experts": [0, 0, 0, 0],
+        "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+        'test_mismatches': [([0, 250, 500, 750], [{}, {'friction': 0.2}, {"wind_force": -2}, {"faulty_motors": [10], "faulty_joints": [1]}])]
+    })
 
 
 def apply_config_params(conf, params):
@@ -1252,14 +1072,12 @@ def env_args_from_config(config):
 
 real_time = False
 # real_time = True
-rospy.init_node('pytorch_node') # Initialize ROS node
 
 if real_time:
     config["xreward"] = 1
     config["rollreward"] = 1
     config["pitchreward"] = 1
     config["yawreward"] = 1
-    #path = "/home/jack/Documents/SpotMicro_Team_Tim/SpotMicro_team/exp/results/"
     path = "/home/haretis/Documents/SpotMicro_team/exp/results/"
     directory = ['27_03_2020_11_04_21_Slippery_floor'][0]
     config['pretrained_model'] = path + config['env_name'] + "/" + directory + "/run_0"

@@ -668,7 +668,6 @@ if __name__ == "__main__":
 
     render = True
     # render = False
-
     on_rack = 1
     run = 0
 
