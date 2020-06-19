@@ -11,12 +11,10 @@
     <color rgba="0.1 0.1 0.1 1"/>
   </material>
   <material name="grey">
-    <color rgba="0.6 0.6 0.6 1"/>
+    <color rgba="0.2 0.2 0.2 1"/>
   </material>
-    <material name="brown">
-    <color rgba="0.545 0.27 0.074 1"/>
-  </material>
-  <link name="base_link">
+  <link
+    name="base_link">
     <inertial>
       <origin
         xyz="-0.0004418 -0.00072045 0.016622"
@@ -37,7 +35,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/base_link.STL" />
+          filename="../meshes/base_link.STL" />
       </geometry>
       <material
         name="blue">
@@ -49,59 +47,10 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/base_link.STL" />
+          filename="../meshes/base_link.STL" />
       </geometry>
     </collision>
   </link>
-
-  <link name="load">
-    <inertial>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <mass
-        value="1" />
-      <inertia
-        ixx="3.26E-03"
-        ixy="1.22E-03"
-        ixz="6.12E-04"
-        iyy="1.22E-03"
-        iyz="1.22E-03"
-        izz="3.26E-03" />
-    </inertial>
-
-    <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <box size="0.07 0.07 0.07"/>
-      </geometry>
-      <material
-        name="brown">
-      </material>
-    </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <box size="0.07 0.07 0.07"/>
-      </geometry>
-    </collision>
-  </link>
-
-  <joint name="load_joint"
-    type="fixed">
-    <origin
-      xyz="0. -0.06 0.07"
-      rpy="0 0 0" />
-    <parent
-      link="base_link" />
-    <child
-      link="load" />
-  </joint>
-
   <link
     name="front_left_shoulder_link">
     <inertial>
@@ -124,7 +73,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_shoulder_link.STL" />
+          filename="../meshes/front_left_shoulder_link.STL" />
       </geometry>
       <material
         name="black">
@@ -136,7 +85,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_shoulder_link.STL" />
+          filename="../meshes/front_left_shoulder_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -180,7 +129,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_thigh_link.STL" />
+          filename="../meshes/front_left_thigh_link.STL" />
       </geometry>
       <material
         name="blue">
@@ -192,7 +141,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_thigh_link.STL" />
+          filename="../meshes/front_left_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -201,7 +150,7 @@
     type="revolute">
     <origin
       xyz="-0.0234 0 0.0226"
-      rpy="0 0 0" />
+      rpy="0 0 0.10521" />
     <parent
       link="front_left_shoulder_link" />
     <child
@@ -236,7 +185,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_calf_link.STL" />
+          filename="../meshes/front_left_calf_link.STL" />
       </geometry>
       <material
         name="grey">
@@ -248,7 +197,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_left_calf_link.STL" />
+          filename="../meshes/front_left_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -292,7 +241,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_shoulder_link.STL" />
+          filename="../meshes/rear_left_shoulder_link.STL" />
       </geometry>
       <material
         name="black">
@@ -304,7 +253,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_shoulder_link.STL" />
+          filename="../meshes/rear_left_shoulder_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -348,7 +297,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_thigh_link.STL" />
+          filename="../meshes/rear_left_thigh_link.STL" />
       </geometry>
       <material
         name="blue">
@@ -360,7 +309,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_thigh_link.STL" />
+          filename="../meshes/rear_left_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -369,7 +318,7 @@
     type="revolute">
     <origin
       xyz="0.02175 0 0.0226"
-      rpy="0 0 0" />
+      rpy="0 0 0.10521" />
     <parent
       link="rear_left_shoulder_link" />
     <child
@@ -404,7 +353,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_calf_link.STL" />
+          filename="../meshes/rear_left_calf_link.STL" />
       </geometry>
       <material
         name="grey">
@@ -416,7 +365,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_left_calf_link.STL" />
+          filename="../meshes/rear_left_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -460,7 +409,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_shoulder_link.STL" />
+          filename="../meshes/rear_right_shoulder_link.STL" />
       </geometry>
       <material
         name="black">
@@ -472,7 +421,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_shoulder_link.STL" />
+          filename="../meshes/rear_right_shoulder_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -516,7 +465,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_thigh_link.STL" />
+          filename="../meshes/rear_right_thigh_link.STL" />
       </geometry>
       <material
         name="blue">
@@ -528,7 +477,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_thigh_link.STL" />
+          filename="../meshes/rear_right_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -572,7 +521,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_calf_link.STL" />
+          filename="../meshes/rear_right_calf_link.STL" />
       </geometry>
       <material
         name="grey">
@@ -584,7 +533,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/rear_right_calf_link.STL" />
+          filename="../meshes/rear_right_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -593,7 +542,7 @@
     type="revolute">
     <origin
       xyz="0 -0.118 -0.00045526"
-      rpy="3.14 0 3.14" />
+      rpy="3.1378 -0.00040516 3.0364" />
     <parent
       link="rear_right_thigh_link" />
     <child
@@ -628,7 +577,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_shoulder_link.STL" />
+          filename="../meshes/front_right_shoulder_link.STL" />
       </geometry>
       <material
         name="black">
@@ -640,7 +589,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_shoulder_link.STL" />
+          filename="../meshes/front_right_shoulder_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -684,7 +633,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_thigh_link.STL" />
+          filename="../meshes/front_right_thigh_link.STL" />
       </geometry>
       <material
         name="blue">
@@ -696,7 +645,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_thigh_link.STL" />
+          filename="../meshes/front_right_thigh_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -740,7 +689,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_calf_link.STL" />
+          filename="../meshes/front_right_calf_link.STL" />
       </geometry>
       <material
         name="grey">
@@ -752,7 +701,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://spot_micro_urdf_v2/meshes/front_right_calf_link.STL" />
+          filename="../meshes/front_right_calf_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -761,7 +710,7 @@
     type="revolute">
     <origin
       xyz="0 -0.118 -0.00045526"
-      rpy="3.14 0 3.14" />
+      rpy="3.1378 -0.00040516 3.0364" />
     <parent
       link="front_right_thigh_link" />
     <child

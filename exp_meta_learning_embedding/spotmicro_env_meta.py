@@ -615,7 +615,7 @@ def main(gym_args, config, test_mismatch, index, gym_kwargs={}):
 config = {
     # exp parameters:
     "horizon": 25,  # NOTE: "sol_dim" must be adjusted
-    "iterations": 300,
+    "iterations": 10,
     # "random_episodes": 1,  # per task
     "episode_length": 500,  # number of times the controller is updated
     "online": True,
@@ -623,15 +623,14 @@ config = {
     "successive_steps": 50,
     "stop_adapatation_step": 10000,
     "init_state": None,  # Must be updated before passing config as param
-    "action_dim": 12,
-    "action_space": ['S&E', 'Motor'][1],
+    "action_dim": 12, "action_space": ['S&E', 'Motor'][1],
     "init_joint": [0., 0.6, -1.] * 4,
     "real_ub": [0.1, 0.8, -0.8] * 4,
     "real_lb": [-0.1, 0.4, -1.2] * 4,
     "goal": None,  # Sampled during env reset
     "ctrl_time_step": 0.02,
     "K": 1,  # number of control steps with the same control1ler
-    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
+    "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'z'],
     "desired_speed": 0.5,
     "xreward": 1,
     "zreward": 1,
@@ -646,7 +645,7 @@ config = {
     "soft_smoothing": 0,
     "hard_smoothing": 1,
     "record_video": 1,
-    "video_recording_frequency": 20,
+    "video_recording_frequency": 1,
     "online_damage_probability": 0.0,
     "sample_model": False,
 
@@ -832,10 +831,21 @@ test_mismatches = None
 #     {'faulty_motors': [4], 'faulty_joints': [0]},
 # ]
 mismatches = [
-    {"faulty_motors": [1], "faulty_joints": [0]},
-    {"faulty_motors": [2], "faulty_joints": [-1]},
-    {"faulty_motors": [7], "faulty_joints": [1]},
-    {"faulty_motors": [8], "faulty_joints": [0]},
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0.25]},
+                          {'faulty_motors': [10], 'faulty_joints': [0.75]},
+                          {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [10], 'faulty_joints': [0.25]},
+                          {'faulty_motors': [4], 'faulty_joints': [0.75]},
+                          {'faulty_motors': [11], 'faulty_joints': [0]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+                          {'faulty_motors': [5], 'faulty_joints': [-1.6]},
+                          {'faulty_motors': [10], 'faulty_joints': [1.25]}]),
+
+    ([0, 250, 500, 750], [{}, {'faulty_motors': [5], 'faulty_joints': [-0.3]},
+                          {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+                          {'faulty_motors': [4], 'faulty_joints': [-0.2]}]),
 ]
 
 test_mismatches = []
@@ -844,7 +854,7 @@ config_params = []
 adapt_steps = [None]
 embedding_sizes = [10]
 epochs = [5]
-data_dirs = ["0", '1', '2', '3', '4']
+data_dirs = ["0", '1']
 
 for a in adapt_steps:
     for embedding_size in embedding_sizes:
@@ -853,9 +863,10 @@ for a in adapt_steps:
                     for mismatch in mismatches:
                         config_params.append(
                             {"adapt_steps": a, 'successive_steps': 1, "epoch": epoch, "embedding_size": embedding_size,
-                             "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 500,
-                             'training_tasks_index': [0, 1, 2, 3, 4], 'online': False, 'start_from_raw': False,
-                             "data_dir": "data/spotmicro/4_motor_damaged_"+ data_dir})
+                             "meta_model_name": "all_emb_size_" + str(embedding_size), "episode_length": 1000,
+                             "learning_rate": 1e-3,
+                             'training_tasks_index': [1, 2, 3, 4, 5, 6, 7, 8], 'online': True, 'start_from_raw': False,
+                             "data_dir": "data/spotmicro/8_damages_" + data_dir})
                         test_mismatches.append(mismatch)
 
 n_run = len(config_params)

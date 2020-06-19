@@ -404,7 +404,6 @@ class SpotMicroEnv(gym.Env):
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
-            # cc = (1/0.36*((0.8-self.lateral_friction)*(0.4+self.lateral_friction)))
             cc = (0.8-self.lateral_friction)/0.9
             self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95*cc])
             self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1-0.8*cc])
@@ -689,8 +688,12 @@ if __name__ == "__main__":
 
     render = True
     # render = False
+<<<<<<< HEAD
+    on_rack = 1
+=======
 
     on_rack = 0
+>>>>>>> 4f27d694da9757216c98bb2ea82659549d2a67f6
     run = 0
 
     maxis = [[10, 10, 1000]]
