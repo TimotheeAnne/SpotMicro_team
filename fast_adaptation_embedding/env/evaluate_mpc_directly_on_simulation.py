@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # render = True
 
     config = {
-        "n_run": 3,
+        "n_run": 18,
         "episode_length": 500,
 
         "N": '10**(run//3)',
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         json.dump(env_config, fp)
 
     for run in range(config["n_run"]):
-        config['N'] = int(10**5)
+        config['N'] = int(10**(run//3))
 
         env = gym.make("MinitaurTorqueEnv_fastAdapt-v0", **env_config)
         env.metadata['video.frames_per_second'] = 1 / config['dt']
