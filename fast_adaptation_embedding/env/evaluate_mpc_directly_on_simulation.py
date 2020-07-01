@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # render = True
 
     config = {
-        "n_run": 18,
+        "n_run": 12,
         "episode_length": 500,
 
         "N": '10**(run//3)',
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         'action_dimension': 8,
         "max_vel": 10,
         "max_acc": 100,
-        "max_jerk": 10000,
+        "max_jerk": 1000,
         "dt": 1 / 50,
         "desired_speed": 0.5,
         "reward_weights": [1, 1, 1, 1]
