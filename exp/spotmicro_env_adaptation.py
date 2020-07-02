@@ -708,8 +708,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     model_index = config['online_experts'][0]
                     env_index = int(index_iter) % n_task
                     local_index = index_iter // n_task
-                if (local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config[
-                    "test_iterations"] - 1:
+                if config['record_video'] and ((local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config[
+                    "test_iterations"] - 1):
                     recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(local_index) + ".mp4")
                 else:
                     recorder = None
@@ -748,7 +748,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, x_index]) * 0.02)
+                current_distance = np.sum(np.array(samples['obs'])[:, x_index]) * 0.02
+                best_distance = max(best_distance, current_distance)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -790,7 +791,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'][0])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * 0.02)
+                current_distance = np.sum(np.array(samples['obs'])[:, x_index]) * 0.02
+                best_distance = max(best_distance, current_distance)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -804,7 +806,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
             with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt",
                       "a+") as f:
-                f.write(str(c) + "\n")
+                f.write(str(c) + " : " + str(current_distance) + "\n")
 
             with open(os.path.join(config['logdir'], "test_logs.pk"), 'wb') as f:
                 pickle.dump({
@@ -882,9 +884,9 @@ config = {
     "hard_smoothing": 1,
 
     # logging
-    "render": False,
+    "render": True,
     "record_video": 1,
-    "video_recording_frequency": 25,
+    "video_recording_frequency": 1,
     "result_dir": "results",
     "env_name": "spot_micro_06",
     "exp_suffix": "experiment",
@@ -999,7 +1001,7 @@ config_params = None
 run_mismatches = None
 
 config['exp_suffix'] = "nice_video"
-config_params = []
+# config_params = []
 
 # mismatches = [
 #
@@ -1016,17 +1018,17 @@ config_params = []
 #     {"faulty_motors": [11], "faulty_joints": [-0.25]},
 # ]
 #
-run_mismatches = []
-
-for _ in range(1):
-    for mismatch in mismatches:
-        run_mismatches.append([{"load_weight": 2, "load_pos": 0.06}])
-        config_params.append({'hard_reset': True})
+# run_mismatches = []
+#
+# for _ in range(1):
+#     for mismatch in mismatches:
+#         run_mismatches.append([{"load_weight": 1, "load_pos": 0.06}])
+#         config_params.append({'hard_reset': True})
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
 
-""" For decreasing friction """
+# """ For decreasing friction """
 # for expert in experts:
 #     config_params.append({
 #         'pretrained_model': [path + "/run_" + str(expert)],
@@ -1036,27 +1038,48 @@ for _ in range(1):
 #     })
 
 # mismatches = [
+#     ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0]},
+#                           {'friction': 0.2},
+#                           {'wind_force': -2},
+#                           ]),
     # ([0], [{'friction': 0.2}]),
-    # ([0], [{"wind_force": 2}]),
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0.25]},
+    #                       {'faulty_motors': [10], 'faulty_joints': [0.75]},
+    #                       {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [10], 'faulty_joints': [0.25]},
+    #                       {'faulty_motors': [4], 'faulty_joints': [0.75]},
+    #                       {'faulty_motors': [11], 'faulty_joints': [0]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+    #                       {'faulty_motors': [5], 'faulty_joints': [-1.6]},
+    #                       {'faulty_motors': [10], 'faulty_joints': [1.25]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [5], 'faulty_joints': [-0.3]},
+    #                       {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+    #                       {'faulty_motors': [4], 'faulty_joints': [-0.2]}]),
     # ([0], [{"wind_force": -1}]),
-    # ([0], [{"faulty_motors": [5], "faulty_joints": [-1]}]),
+    # ([0], [{"faulty_motors": [4], "faulty_joints": [0]}]),
     # ([0], [{"faulty_motors": [10], "faulty_joints": [1]}]),
     # ([0], [{"faulty_motors": [11], "faulty_joints": [0]}]),
     # ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
-    # ([0], [{"load_weight": 2, "load_pos": 0.07}]),
+    # ([0], [{"load_weight": 1, "load_pos": 0.06}]),
 # ]
 
-# tripod_path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/tripod/run_0"
-# tripod_mismatch = ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches/"
+# mismatch = ([0], [{}])
 #
-# experts = ['9']
+# experts = ['0']
 # """ For training course """
+#
 # for i, expert in enumerate(experts):
 #     config_params.append({
 #         'pretrained_model': [path + "/run_" + expert],
-#         "online_experts": [0],
+#         "online_experts": [0, 0, 0, 0], 'online': True, 'hard_reset': False,
 #         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
-#         'test_mismatches': [mismatches[i]]
+#         "record_video": False, "test_iterations": 20, "render": False,
+#         'test_mismatches': [mismatches[i]], "episode_length": 1000,
 #     })
 
 
