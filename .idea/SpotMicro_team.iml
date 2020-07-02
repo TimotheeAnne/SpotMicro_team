@@ -2,12 +2,15 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
-    <orderEntry type="jdk" jdkName="Python 3.7 (pytorch)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.6 (mbpo)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="simulations" />
-    <orderEntry type="module" module-name="catkin_ws" />
-    <orderEntry type="module" module-name="OpenCR" />
+    <orderEntry type="module" module-name="mbpo" />
+    <orderEntry type="module" module-name="mbbl" />
+    <orderEntry type="module" module-name="rex-gym" />
+    <orderEntry type="module" module-name="spotmicro_env" />
     <orderEntry type="module" module-name="pybullet" />
+    <orderEntry type="module" module-name="OpenCR" />
   </component>
   <component name="PyDocumentationSettings">
     <option name="format" value="PLAIN" />

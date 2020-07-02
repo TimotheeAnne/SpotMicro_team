@@ -4,9 +4,12 @@
     <modules>
       <module fileurl="file://$USER_HOME$/catkin_ws/src/OpenCR/.idea/OpenCR.iml" filepath="$USER_HOME$/catkin_ws/src/OpenCR/.idea/OpenCR.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/SpotMicro_team.iml" filepath="$PROJECT_DIR$/.idea/SpotMicro_team.iml" />
-      <module fileurl="file://$USER_HOME$/catkin_ws/.idea/catkin_ws.iml" filepath="$USER_HOME$/catkin_ws/.idea/catkin_ws.iml" />
+      <module fileurl="file://$USER_HOME$/repos/mbbl/.idea/mbbl.iml" filepath="$USER_HOME$/repos/mbbl/.idea/mbbl.iml" />
+      <module fileurl="file://$USER_HOME$/repos/mbpo/.idea/mbpo.iml" filepath="$USER_HOME$/repos/mbpo/.idea/mbpo.iml" />
       <module fileurl="file://$USER_HOME$/repos/bullet3/examples/pybullet/.idea/pybullet.iml" filepath="$USER_HOME$/repos/bullet3/examples/pybullet/.idea/pybullet.iml" />
+      <module fileurl="file://$USER_HOME$/repos/rex-gym/.idea/rex-gym.iml" filepath="$USER_HOME$/repos/rex-gym/.idea/rex-gym.iml" />
       <module fileurl="file://$PROJECT_DIR$/../../simulations/.idea/simulations.iml" filepath="$PROJECT_DIR$/../../simulations/.idea/simulations.iml" />
+      <module fileurl="file://$USER_HOME$/Downloads/spotmicro_env/.idea/spotmicro_env.iml" filepath="$USER_HOME$/Downloads/spotmicro_env/.idea/spotmicro_env.iml" />
     </modules>
   </component>
 </project>

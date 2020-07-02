@@ -1,0 +1,807 @@
+"""
+SpotMicroAI Simulation
+"""
+import os, inspect
+
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(os.path.dirname(currentdir))
+os.sys.path.insert(0, parentdir)
+
+
+import gym
+#import env
+from spotmicro_team_tim.fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+import numpy as np
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
+
+import pybullet_data
+import time
+import pybullet as p
+from pybullet import DIRECT, GUI
+import math
+import numpy as np
+import gym
+from gym import spaces
+
+#from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+
+
+# from pynput.keyboard import Key, Listener
+
+gym.logger.set_level(40)
+
+RENDER_HEIGHT = 1080
+RENDER_WIDTH = 1920
+
+MOTOR_NAMES = ['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',
+               'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint',
+               'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint',
+               'FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint',
+               ]
+
+class SpotMicroStandupEnv(gym.Env):
+    metadata = {"render.modes": ["human", "rgb_array"], "video.frames_per_second": 50}
+
+    def __init__(self,
+                 render=False,
+                 on_rack=False,
+                 action_space="Motor",
+                 ctrl_time_step=0.02,
+                 distance_weight=1.0,
+                 desired_speed=1.0,
+                 high_weight=0.0,
+                 roll_weight=0.0,
+                 pitch_weight=0.0,
+                 yaw_weight=0.0,
+                 action_weight=0.0,
+                 action_vel_weight=0.0,
+                 action_acc_weight=0.0,
+                 action_jerk_weight=0.0,
+                 init_joint=None,
+                 ub=None,
+                 lb=None,
+                 kp=None,
+                 kd=None,
+                 urdf_model="basic",
+                 inspection=False,
+                 #TODO: fix normalized actions
+                 normalized_action=True,
+                 faulty_motors=[],
+                 faulty_joints=[],
+                 load_weight=0,
+                 load_pos=0,
+                 obs_attributes=['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+                 ):
+
+        self.is_render = render
+        if self.is_render:
+            self.pybullet_client = bullet_client.BulletClient(connection_mode=GUI)
+        else:
+            self.pybullet_client = bullet_client.BulletClient(connection_mode=DIRECT)
+        # Simulation Configuration
+        self.fixedTimeStep = 1. / 1000  # 250
+        self.action_repeat = int(ctrl_time_step / self.fixedTimeStep)
+        self.numSolverIterations = 200
+        self.useFixeBased = on_rack
+        self.init_oritentation = self.pybullet_client.getQuaternionFromEuler([0, 0, 0])
+        self.reinit_position = [0, 0, 0.3]
+        self.init_position = [0, 0, 0.23]
+        self.kp = np.array([10, 5, 3] * 4) if kp is None else kp
+        self.kd = np.array([0.1, 0.1, 0.04] * 4) if kd is None else kd
+        self.maxForce = 3
+        #self._motor_direction = [-1, 1, 1] * 4
+        self.shoulder_to_knee = 0.2
+        self.knee_to_foot = 0.1
+        self.normalized_action = normalized_action
+        if init_joint is None:
+            init_joint = [0., 0.6, -1.] * 4
+        self.init_joint = init_joint
+        self.lateral_friction = 0.8
+        self.urdf_model = urdf_model
+        self.fc = 10
+        self.C = 1 / (np.tan(np.pi * self.fc * self.fixedTimeStep))
+        self.A = 1 / (1 + self.C)
+        self.inspection = inspection
+        #assert action_space in ["S&E", "Motor"], "Control mode not implemented yet"
+        self.action_space = action_space
+        self.active_mismatch = []
+        if (ub is not None) and (lb is not None):
+            self.ub = np.array(ub)
+            self.lb = np.array(lb)
+
+
+        self._objective_weights = [distance_weight, high_weight, roll_weight, pitch_weight, yaw_weight,
+                                   action_weight, action_vel_weight, action_acc_weight, action_jerk_weight]
+        self.desired_speed = desired_speed
+        self.t = 0
+        self.distance = 0
+        self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_TINY_RENDERER, 1)
+
+        self.faulty_motors = faulty_motors
+        self.faulty_joints = faulty_joints
+        self.load_weight = load_weight
+        self.load_pos = load_pos
+
+        self.wind_force = 0
+        self.friction = 0.8
+        self.mismatch = {'friction': self.friction,
+                         'wind_force': self.wind_force,
+                         'load_weight': self.load_weight,
+                         'load_pos': self.load_pos,
+                         'faulty_motors': self.faulty_motors,
+                         'faulty_joints': self.faulty_joints,
+                         'changing_friction': False}
+        self.changing_friction = False
+        self.texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/checker_blue.png")
+        self.ice_texture_id = self.pybullet_client.loadTexture(currentdir + "/assets/ice-texture.png")  # https://www.needpix.com/about
+        self.quadruped = self.loadModels()
+        self._BuildJointNameToIdDict()
+        self._BuildMotorIdList()
+        self.jointNameToId = self.getJointNames(self.quadruped)
+        self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations,
+                                                       fixedTimeStep=self.fixedTimeStep)
+        self.pybullet_client.resetDebugVisualizerCamera(1, 85.6, 0, [-0.61, 0.12, 0.25])
+
+        action_dim = 12
+        self._past_actions = np.zeros((4, action_dim))
+        self._past_velocity = np.zeros((2, action_dim))
+
+        self._action_bound = 1
+        action_high = np.array([self._action_bound] * action_dim)
+        self.action_space = spaces.Box(-action_high, action_high, dtype=np.float32)
+        self.obs_attributes = obs_attributes
+        self.obs_attributes_index = {}
+        observation_high = (self.get_observation_upper_bound())
+        observation_low = (self.get_observation_lower_bound())
+        self.observation_space = spaces.Box(observation_low, observation_high, dtype=np.float32)
+        #self.set_mismatch(self.mismatch)
+
+        self.goal_reached = False
+
+    def _BuildJointNameToIdDict(self):
+        num_joints = self.pybullet_client.getNumJoints(self.quadruped)
+        self._joint_name_to_id = {}
+        for i in range(num_joints):
+            joint_info = self.pybullet_client.getJointInfo(self.quadruped, i)
+            self._joint_name_to_id[joint_info[1].decode("UTF-8")] = joint_info[0]
+
+    def _BuildMotorIdList(self):
+        self._motor_id_list = [self._joint_name_to_id[motor_name] for motor_name in MOTOR_NAMES]
+
+    def loadModels(self):
+        self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
+        self.pybullet_client.setGravity(0, 0, -9.81)
+
+        orn = self.pybullet_client.getQuaternionFromEuler([0, 0, 0])
+        self.pybullet_client.setAdditionalSearchPath(pybullet_data.getDataPath())
+        self.planeUid = self.pybullet_client.loadURDF("plane_transparent.urdf", [0, 0, 0.], orn)
+        self.ice_planeUid = self.pybullet_client.loadURDF(currentdir+"/assets/visual_plane.urdf", [0, 0, 0.], orn)
+        self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1, 1, 1, 0])
+        self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id)
+        self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+
+        flags = self.pybullet_client.URDF_USE_SELF_COLLISION
+
+        urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v3_rotated_base.urdf'
+        #urdf_model = 'spot_micro_urdf_v2/urdf/spot_micro_urdf_v2.urdf.xml'
+
+
+        quadruped = self.pybullet_client.loadURDF(currentdir + "/assets/" + urdf_model, self.init_position,
+                                                  self.init_oritentation,
+                                                  useFixedBase=self.useFixeBased,
+                                                  useMaximalCoordinates=False,
+                                                  flags=flags)
+        self.pybullet_client.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
+        self.wind_arrow = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/arrow.urdf.xml",
+                                                        [0, 0, -2],
+                                                        p.getQuaternionFromEuler((0, 0, 0)))
+        self.load_visual = self.pybullet_client.loadURDF(currentdir + "/assets/urdf/load.urdf.xml",
+                                                         [0, 0, -2],
+                                                         p.getQuaternionFromEuler((0, 0, 0)))
+
+        return quadruped
+
+    def set_kd(self, kd):
+        self.kd = kd
+
+    def set_kp(self, kp):
+        self.kp = kp
+
+    def reset(self, hard_reset=False):
+        if hard_reset:
+            self.pybullet_client.resetSimulation()
+            self.pybullet_client.setPhysicsEngineParameter(numSolverIterations=self.numSolverIterations,
+                                                           fixedTimeStep=self.fixedTimeStep)
+
+            self.quadruped = self.loadModels()
+            self._BuildJointNameToIdDict()
+            self._BuildMotorIdList()
+            #self.apply_mismatch()
+        if self.useFixeBased:
+            init_pos = [0, 0, 0.5]
+            reinit_pos = [0, 0, 0.5]
+        else:
+            init_pos = [0, 0, 0.23]
+            reinit_pos = [0, 0, 0.5]
+        self.pybullet_client.resetBasePositionAndOrientation(self.quadruped, reinit_pos, self.init_oritentation)
+        self.pybullet_client.resetBaseVelocity(self.quadruped, [0, 0, 0], [0, 0, 0])
+
+        for _ in range(40):
+            self.pybullet_client.setJointMotorControlArray(
+                self.quadruped,
+                self._motor_id_list,
+                self.pybullet_client.POSITION_CONTROL,
+                #targetPositions=np.multiply(self.apply_faulty_motors(self.init_joint), self._motor_direction),
+                targetPositions=self.init_joint,
+                forces=np.ones(12) * 1000
+            )
+            # time.sleep(self.fixedTimeStep*20)
+            self.pybullet_client.stepSimulation()
+        p.setJointMotorControlArray(
+            self.quadruped,
+            self._motor_id_list,
+            p.POSITION_CONTROL,
+            #targetPositions=np.multiply(self.apply_faulty_motors(self.init_joint), self._motor_direction),
+            targetPositions=self.init_joint,
+            forces=np.zeros(12)
+        )
+
+        self.pybullet_client.stepSimulation()
+        self.pybullet_client.resetBasePositionAndOrientation(self.quadruped, init_pos, self.init_oritentation)
+        self.pybullet_client.resetBaseVelocity(self.quadruped, [0, 0, 0], [0, 0, 0])
+        for _ in range(300):
+            self.apply_action(self.init_joint)
+            # time.sleep(self.fixedTimeStep*10)
+        self.t = 0
+        self._past_velocity = np.zeros((2, 12))
+        self.distance = 0
+        return self.get_obs()
+
+    def render(self, mode="rgb_array", close=False):
+        if mode != "rgb_array":
+            return np.array([])
+        bodyPos, _ = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        base_pos = bodyPos
+
+        if self.inspection:
+            base_pos = base_pos[0]+0.1, base_pos[1]-0.1, base_pos[2],
+            view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
+                cameraTargetPosition=base_pos,
+                distance=-0.4,
+                yaw=225,
+                pitch=15,
+                roll=0,
+                upAxisIndex=2)
+        else:
+            base_pos = base_pos[0] + 0.1, base_pos[1] - 0.1, base_pos[2],
+            view_matrix = self.pybullet_client.computeViewMatrixFromYawPitchRoll(
+                cameraTargetPosition=base_pos,
+                distance=-0.4,
+                yaw=225,
+                pitch=15,
+                roll=0,
+                upAxisIndex=2)
+        proj_matrix = self.pybullet_client.computeProjectionMatrixFOV(fov=60,
+                                                                      aspect=float(RENDER_WIDTH) / RENDER_HEIGHT,
+                                                                      nearVal=0.1,
+                                                                      farVal=100.0)
+        (_, _, px, _, _) = self.pybullet_client.getCameraImage(
+            width=RENDER_WIDTH,
+            height=RENDER_HEIGHT,
+            renderer=p.ER_BULLET_HARDWARE_OPENGL,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix)
+        rgb_array = np.array(px)
+        rgb_array = rgb_array[:, :, :3]
+        return rgb_array
+
+    # def add_comments_to_video(self, texts, path, video_name, dt=0.02):
+    #     steps = len(texts)
+    #     """ create subtitle """
+    #     comments = ""
+    #     for i in range(steps):
+    #         comments += str(i) + '\n'
+    #         s = int(dt * i)
+    #         s1 = '0' + str(s) if s < 10 else str(s)
+    #         ms = (i % int(1 / dt)) * int(dt * 1000)
+    #         if ms < 1:
+    #             ms1 = '000'
+    #         elif ms < 10:
+    #             ms1 = '00' + str(ms)
+    #         elif ms < 100:
+    #             ms1 = '0' + str(ms)
+    #         else:
+    #             ms1 = str(ms)
+    #
+    #         s = int((i + 1) * dt)
+    #         s2 = '0' + str(s) if s < 10 else str(s)
+    #         ms = ((i + 1) % int(1 / dt)) * int(dt * 1000)
+    #         if ms < 1:
+    #             ms2 = '000'
+    #         elif ms < 10:
+    #             ms2 = '00' + str(ms)
+    #         elif ms < 100:
+    #             ms2 = '0' + str(ms)
+    #         else:
+    #             ms2 = str(ms)
+    #
+    #         comments += "00:00:" + s1 + "," + ms1 + " --> 00:00:" + s2 + "," + ms2 + "\n"
+    #         comments += texts[i] + "\n\n"
+    #     with open(path+'/subtitles.srt', 'w') as f:
+    #         f.write(comments)
+    #     os.system('ffmpeg -y -i ' + path + '/subtitles.srt ' + path + '/subtitles.ass')
+    #     """ add subtitle to mp4"""
+    #     os.system('ffmpeg -y -i ' + path + "/" + video_name + '.mp4 -vf ass=' + path + '/subtitles.ass ' + path + "/" + video_name + '_' + "{:2.2f}".format(self.distance) + 'm.mp4')
+
+    # def compute_current_comment(self):
+    #     text = ""
+    #     d = self.distance
+    #     if 'friction' in self.active_mismatch or self.changing_friction:
+    #         f = self.lateral_friction
+    #         text += "friction: " + "{:1.2f}".format(f) + " - "
+    #     if 'wind_force' in self.active_mismatch:
+    #         if self.wind_force > 0:
+    #             text += "Right Wind: " + "{:1.1f}".format(self.wind_force) + "N - "
+    #         else:
+    #             text += "Left Wind: " + "{:1.1f}".format(-self.wind_force) + "N - "
+    #     if 'load_weight' in self.active_mismatch:
+    #         text += "{:1.1f}".format(self.load_weight) + "kg load at x=" + "{:1.1f}".format(self.load_pos) + "m - "
+    #     if 'faulty_motors' in self.active_mismatch:
+    #         if self.faulty_motors == [3, 4, 5]:
+    #             text += "Missing front right leg -"
+    #         else:
+    #             for motor, value in zip(self.faulty_motors, self.faulty_joints):
+    #                 name = ['Front Left Shoulder', 'Front Left Hip', 'Front Left Knee',
+    #                  'Front Right Shoulder', 'Front Right Hip', 'Front Right Knee',
+    #                  'Rear Left Shoulder', 'Rear Left Hip', 'Rear Left Knee',
+    #                  'Rear Right Shoulder', 'Rear Right Hip', 'Rear Right Knee',
+    #                  ]
+    #                 sign = "+" if value > self.init_joint[motor] else ''
+    #                 text += "Blocked " + name[motor] + " at " + sign + "{:2.0f}".format((value-self.init_joint[motor])*180/np.pi) + "° - "
+    #     text += "Distance traveled: " + "{:2.2f}".format(d) + "m"
+    #     return text
+
+    def changeDynamics(self, quadruped):
+        nJoints = self.pybullet_client.getNumJoints(quadruped)
+        for i in range(nJoints):
+            self.pybullet_client.changeDynamics(quadruped, i, localInertiaDiagonal=[0.000001, 0.000001, 0.000001])
+
+    def getJointNames(self, quadruped):
+        nJoints = self.pybullet_client.getNumJoints(quadruped)
+        jointNameToId = {}
+
+        for i in range(nJoints):
+            jointInfo = self.pybullet_client.getJointInfo(quadruped, i)
+            jointNameToId[jointInfo[1].decode('UTF-8')] = jointInfo[0]
+        return jointNameToId
+
+    def getPos(self):
+        bodyPos, _ = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        return bodyPos
+
+    def getIMU(self):
+        _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        linearVel, angularVel = self.pybullet_client.getBaseVelocity(self.quadruped)
+        return bodyOrn, linearVel, angularVel
+
+    def step(self, action):
+        # time.sleep(1)
+        a = np.copy(action)
+
+        if self.normalized_action:
+            a = a * (self.ub - self.lb) / 2 + (self.ub + self.lb) / 2
+
+
+        observed_torques = []
+        for _ in range(self.action_repeat):
+            obs_torque = self.apply_action(a)
+            observed_torques.append(obs_torque)
+
+        """ for smoothness rewards """
+        self._past_actions[:-1] = self._past_actions[1:]
+        self._past_actions[-1] = np.copy(a)
+
+        obs = self.get_obs()
+
+        # if 'xdot' in self.obs_attributes:
+        #     self.distance += obs[self.obs_attributes_index['xdot']] * self.fixedTimeStep * self.action_repeat
+        #reward, rewards = self.get_reward()
+        reward, rewards = self.get_reward()
+        #text = self.compute_current_comment()
+        info = {'rewards': rewards, 'observed_torques': observed_torques}#, 'text': text}
+        #done = self.fallen()
+        done = self.goal_reached
+        return np.array(obs), reward, done, info
+
+    def fallen(self):
+        _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        return self.checkSimulationReset(bodyOrn)
+
+    def checkSimulationReset(self, bodyOrn):
+        (xr, yr, _) = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
+        return abs(xr) > math.pi / 4 or abs(yr) > math.pi / 4
+
+    # def apply_faulty_motors(self, action):
+    #     faulty_action = np.copy(action)
+    #     for index in range(len(self.faulty_motors)):
+    #         faulty_action[self.faulty_motors[index]] = self.faulty_joints[index]
+    #     return faulty_action
+
+    def apply_action(self, action):
+        self.t = self.t + self.fixedTimeStep
+        q = self.GetMotorAngles()
+        q_vel = self.GetMotorVelocities()
+        PD_torque = self.kp * (action - q) - self.kd * q_vel
+        PD_torque = np.clip(PD_torque, -self.maxForce, self.maxForce)
+        self.pybullet_client.setJointMotorControlArray(bodyIndex=self.quadruped,
+                                                       jointIndices=self._motor_id_list,
+                                                       controlMode=self.pybullet_client.TORQUE_CONTROL,
+                                                       forces=PD_torque)
+        # self.pybullet_client.setJointMotorControlArray(bodyIndex=self.quadruped,
+        #                                                jointIndices=self._motor_id_list,
+        #                                                controlMode=self.pybullet_client.POSITION_CONTROL,
+        #                                                targetPositions=action)
+
+        self.pybullet_client.stepSimulation()
+        return np.copy(PD_torque)
+
+    def _filter_velocities(self, x):
+        y = self.A * (x + self._past_velocity[0]) + (1 - self.C) * self.A * self._past_velocity[1]
+        self._past_velocity = np.copy([x, y])
+        return y
+
+    def get_body_xyz(self):
+        bodyPos, _ = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        return bodyPos
+
+    def get_body_rpy(self):
+        _, bodyOrn = self.pybullet_client.getBasePositionAndOrientation(self.quadruped)
+        bodyOrn = self.pybullet_client.getEulerFromQuaternion(bodyOrn)
+        yaw = bodyOrn[2] - np.pi / 2
+        bodyOrn = [bodyOrn[0], bodyOrn[1], yaw if yaw >= -np.pi else yaw + 2 * np.pi]
+        return bodyOrn
+
+    def get_linear_velocity(self):
+        linearVel, _ = self.pybullet_client.getBaseVelocity(self.quadruped)
+        return linearVel
+
+    def get_angular_velocity(self):
+        _, angularVel = self.pybullet_client.getBaseVelocity(self.quadruped)
+        return angularVel
+
+    def get_obs(self):
+        Obs = []
+        self.obs_attributes_index = {}
+        if 'q' in self.obs_attributes:
+            self.obs_attributes_index['q'] = len(Obs)
+            Obs.extend(self.GetMotorAngles())#.tolist())
+        if 'qdot' in self.obs_attributes:
+            self.obs_attributes_index['qdot'] = len(Obs)
+            Obs.extend(self._filter_velocities(self.GetMotorVelocities()).tolist())
+        if 'rpy' in self.obs_attributes:
+            self.obs_attributes_index['rpy'] = len(Obs)
+            Obs.extend(self.get_body_rpy())
+        if 'rpydot' in self.obs_attributes:
+            self.obs_attributes_index['rpydot'] = len(Obs)
+            Obs.extend(self.get_angular_velocity())
+        if 'xdot' in self.obs_attributes:
+            self.obs_attributes_index['xdot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[:1])
+        if 'ydot' in self.obs_attributes:
+            self.obs_attributes_index['ydot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[1:2])
+        if 'zdot' in self.obs_attributes:
+            self.obs_attributes_index['zdot'] = len(Obs)
+            Obs.extend(self.get_linear_velocity()[2:3])
+        if 'x' in self.obs_attributes:
+            self.obs_attributes_index['x'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[:1])
+        if 'y' in self.obs_attributes:
+            self.obs_attributes_index['y'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[1:2])
+        if 'z' in self.obs_attributes:
+            self.obs_attributes_index['z'] = len(Obs)
+            Obs.extend(self.get_body_xyz()[2:3])
+        return Obs
+
+    def set_desired_speed(self, speed):
+        self.desired_speed = speed
+
+    def get_reward_walk(self):
+        distance_reward = -(self.get_linear_velocity()[0] - self.desired_speed) ** 2
+        high_reward = -(self.get_body_xyz()[2] - 0.1855) ** 2
+        rpy = self.get_body_rpy()
+        roll_reward = -(rpy[0]) ** 2
+        pitch_reward = -(rpy[1]) ** 2
+        yaw_reward = -(rpy[2]) ** 2
+        action_reward = -np.sum((self._past_actions[3]) ** 2)
+        action_vel_reward = -np.sum((self._past_actions[3] - self._past_actions[2]) ** 2)
+        action_acc_reward = -np.sum((self._past_actions[3] - 2 * self._past_actions[2] + self._past_actions[1]) ** 2)
+        action_jerk_reward = -np.sum((self._past_actions[3] - 3 * self._past_actions[2] + 3 * self._past_actions[1] +
+                                      self._past_actions[0]) ** 2)
+        rewards = [distance_reward, high_reward, roll_reward, pitch_reward, yaw_reward, action_reward,
+                   action_vel_reward, action_acc_reward, action_jerk_reward]
+        reward_sum = 0
+        n_rewards = 0
+        for i in range(len(rewards)):
+            if self._objective_weights != 0:
+                reward_sum += np.exp(rewards[i]) / 500
+                n_rewards += 1
+        reward_sum /= n_rewards
+
+        return reward_sum, np.copy(rewards)
+
+    def get_reward(self):
+        # target position
+        t_pos = [0.0, 0.0, 0.21]
+
+        current_base_position = self.get_body_xyz()
+
+        position_reward = abs(t_pos[0] - current_base_position[0]) + \
+                          abs(t_pos[1] - current_base_position[1]) + \
+                          abs(t_pos[2] - current_base_position[2])
+
+        is_pos = False
+
+        if abs(position_reward) < 0.1:
+            position_reward = 1.0 - position_reward
+            is_pos = True
+        else:
+            position_reward = -position_reward
+
+        if current_base_position[2] > t_pos[2]:
+            position_reward = -1000 - position_reward
+
+        if is_pos:
+            self.goal_reached = True
+
+        distance_reward = -(self.get_linear_velocity()[0] - self.desired_speed) ** 2
+        high_reward = -(self.get_body_xyz()[2] - 0.1855) ** 2
+        rpy = self.get_body_rpy()
+        roll_reward = -(rpy[0]) ** 2
+        pitch_reward = -(rpy[1]) ** 2
+        yaw_reward = -(rpy[2]) ** 2
+        action_reward = -np.sum((self._past_actions[3]) ** 2)
+        action_vel_reward = -np.sum((self._past_actions[3] - self._past_actions[2]) ** 2)
+        action_acc_reward = -np.sum((self._past_actions[3] - 2 * self._past_actions[2] + self._past_actions[1]) ** 2)
+        action_jerk_reward = -np.sum((self._past_actions[3] - 3 * self._past_actions[2] + 3 * self._past_actions[1] +
+                                      self._past_actions[0]) ** 2)
+        rewards = [distance_reward, high_reward, roll_reward, pitch_reward, yaw_reward, action_reward,
+                   action_vel_reward, action_acc_reward, action_jerk_reward]
+        reward_sum = 0
+        n_rewards = 0
+        for i in range(len(rewards)):
+            if self._objective_weights != 0:
+                reward_sum += np.exp(rewards[i]) / 500
+                n_rewards += 1
+        reward_sum /= n_rewards
+
+        reward = position_reward
+
+        return reward, np.copy(rewards)
+
+    # def set_mismatch(self, mismatch):
+    #     """ a hard reset is required after setting_mismatch"""
+    #     self.mismatch = {'friction': 0.8,
+    #                      'changing_friction': False,
+    #                      'wind_force': 0,
+    #                      'load_weight': 0,
+    #                      'load_pos': 0,
+    #                      'faulty_motors': [],
+    #                      'faulty_joints': []}
+    #     self.active_mismatch = []
+    #     for (key, val) in mismatch.items():
+    #         self.mismatch[key] = val
+    #         self.active_mismatch.append(key)
+    #     assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
+    #     for x in self.mismatch['faulty_motors']:
+    #         assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
+    #     assert len(self.mismatch['faulty_motors']) == len(
+    #         self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
+    #     assert 0 <= self.mismatch['load_weight'], 'load weight must be >= 0'
+    #     assert -0.07 <= self.mismatch['load_pos'] <= 0.07, 'load pos must be in [-0.07,0.07]'
+
+        # self.lateral_friction = self.mismatch['friction']
+        # self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
+        # self.wind_force = np.abs(self.mismatch['wind_force'])
+        # self.faulty_motors = self.mismatch['faulty_motors']
+        # self.faulty_joints = self.mismatch['faulty_joints']
+        # self.load_weight = self.mismatch['load_weight']
+        # self.load_pos = self.mismatch['load_pos']
+        # self.changing_friction = self.mismatch['changing_friction']
+
+        #self.apply_mismatch()
+
+    # def apply_mismatch(self):
+    #     if self.wind_force == 0:
+    #         self.pybullet_client.resetBasePositionAndOrientation(self.wind_arrow, [0, 0, -2], p.getQuaternionFromEuler((0, 0, 0)))
+    #     # for motor in range(12):
+    #     #     if motor in self.faulty_motors:
+    #     #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+    #     #                                                rgbaColor=[1, 0, 0, 1])
+    #     #     else:
+    #     #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+    #     #                                                rgbaColor=MOTORS_COLORS[motor])
+    #     if self.changing_friction:
+    #         cc = (0.8 - self.lateral_friction) / 0.9
+    #         self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95 * cc])
+    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
+    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+    #     elif self.lateral_friction < 0.4:
+    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., ])
+    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+    #     else:
+    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id, rgbaColor=[1., 1., 1., 1])
+    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+
+
+    def get_observation_upper_bound(self):
+        """Get the upper bound of the observation.
+
+    Returns:
+      The upper bound of an observation. See GetObservation() for the details
+        of each element of an observation.
+    """
+        upper_bound = np.full(self.get_observation_dimension(), np.inf)
+        return upper_bound
+
+    def get_observation_lower_bound(self):
+        """Get the lower bound of the observation."""
+        return -self.get_observation_upper_bound()
+
+    def get_observation_dimension(self):
+        """Get the length of the observation list.
+
+        Returns:
+          The length of the observation list.
+        """
+        return len(self.get_obs())
+
+    def GetMotorAngles(self):
+        """Gets the twelve motor angles at the current moment, mapped to [-pi, pi].
+
+        Returns:
+          Motor angles, mapped to [-pi, pi].
+        """
+        motor_angles = [
+            self.pybullet_client.getJointState(self.quadruped, motor_id)[0]
+            for motor_id in self._motor_id_list
+        ]
+        # motor_angles = np.multiply(motor_angles, self._motor_direction)
+
+        return motor_angles
+
+    def GetMotorVelocities(self):
+        """Get the velocity of all eight motors.
+
+        Returns:
+          Velocities of all eight motors.
+        """
+        motor_velocities = [
+            self.pybullet_client.getJointState(self.quadruped, motor_id)[1]
+            for motor_id in self._motor_id_list
+        ]
+        # motor_velocities = np.multiply(motor_velocities, self._motor_direction)
+
+        return motor_velocities
+
+
+if __name__ == "__main__":
+    import gym
+    import fast_adaptation_embedding.env
+    from tqdm import tqdm, trange
+    from gym.wrappers.monitoring.video_recorder import VideoRecorder
+    import matplotlib.pyplot as plt
+    import pickle
+
+    render = True
+    # render = False
+
+    on_rack = 1
+    run = 0
+
+    print("Running main in spot standup")
+
+
+    maxis = [[10, 10, 1000]]
+    bounds = [[[0.1, 0.8, -0.8], [-0.1, 0.4, -1.2]]]
+    config = []
+    for maxi in maxis:
+        for bound in bounds:
+            config.append({'maxi': maxi, 'real_ub': bound[0], 'real_lb': bound[1]})
+
+    init_joint = np.zeros(12)
+
+
+
+    real_ub = np.array([1.57, 1.57, 1.57, 1.57, 1.57, 1.57, 0.17, 1.57, 1.57, 0.17, 1.57, 1.57])
+    real_lb = np.array([-0.17, -1.57, -1.57, -0.17, -1.57, -1.57, -1.57, -1.57, -1.57, -1.57, -1.57, -1.57])
+
+
+    max_vel, max_acc, max_jerk = config[run]['maxi']
+
+    max_vel = max_vel * 2 / (real_ub - real_lb)
+    max_acc = max_acc * 2 / (real_ub - real_lb)
+    max_jerk = max_jerk * 2 / (real_ub - real_lb)
+
+
+    env = gym.make("SpotMicroStandupEnv-v0",
+                   render=render,
+                   on_rack=on_rack,
+                   action_space= 'Motor',
+                   init_joint=init_joint,
+                   ub=real_ub,
+                   lb=real_lb,
+                   urdf_model='sphere',
+                   inspection=True,
+                   normalized_action=False,
+                   ctrl_time_step=0.02,
+                   faulty_motors=[],
+                   faulty_joints=[],
+                   load_weight=0,
+                   load_pos=0,
+                   obs_attributes=['q', 'qdot', 'rpy', 'rpydot', 'z', 'xdot', 'ydot'],
+                   )
+
+    O, A = [], []
+    # for iter in tqdm(range(1)):
+    #     #env.set_mismatch({})
+    #     # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
+    #     # env.set_mismatch({"friction": 0.8})
+    #     # env.set_mismatch({"wind_force": -1})
+    #     # env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
+    #     # env.set_mismatch({"changing_friction": True})
+    #
+    #     init_obs = env.reset(hard_reset=1)
+    #     # time.sleep(10)
+    video_name = "video"
+
+    recorder = None
+    recorder = VideoRecorder(env, video_name+".mp4")
+    #
+    #     ub = 1
+    #     lb = -1
+    #
+    #     past = [(env.init_joint - (env.ub + env.lb) / 2) * 2 / (env.ub - env.lb)] * 3
+    #     # past = [env.init_joint]*3
+    #
+    #     dt = 0.02
+    R = 0
+    #
+
+    init_obs = env.reset(hard_reset=1)
+    Obs, Acs, texts = [init_obs], [], []
+
+    while(True):
+
+        # action = np.copy(x)
+        # if actions is not None:
+        #     action = actions[(i - 3) % len(actions)]
+
+        action = np.array([-2.5, 0.5, 0.5, 1.6, 0, 0, 0, 0, 0, 0, 0, 0])
+        a = np.copy(action)
+
+        obs, reward, done, info = env.step(a)
+        q = obs[0:12]
+        print(q)
+        Obs.append(list(obs))
+        Acs.append(list(action))
+        #texts.append(info['text'])
+        R += reward
+        # past = np.append(past, [np.copy(x)], axis=0)
+        if done:
+            break
+        if render and recorder is None:
+            time.sleep(0.02)
+    O.append(np.copy(Obs))
+    A.append(np.copy(Acs))
+
+    if recorder is not None:
+        recorder.capture_frame()
+        recorder.close()
+        env.add_comments_to_video(texts=texts, path="assets", video_name=video_name, dt=dt)
+    import json
+    with open('action_sequence.json', 'w') as f:
+        json.dump(Acs, f)
+    with open('obs_sequence.json', 'w') as f:
+        json.dump(Obs, f)

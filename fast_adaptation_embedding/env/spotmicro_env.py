@@ -18,6 +18,7 @@ from gym import spaces
 
 from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
+
 # from pynput.keyboard import Key, Listener
 
 gym.logger.set_level(40)
