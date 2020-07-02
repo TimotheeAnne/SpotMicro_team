@@ -270,7 +270,7 @@ def execute_random(env, steps, init_state, K, index_iter, res_dir, samples, conf
         if config['hard_smoothing']:
             past = np.append(past, [np.copy(x)], axis=0)
         reward.append(r)
-        #rewards.append(info['rewards'])
+        rewards.append(info['rewards'])
         # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         desired_torques = []
@@ -335,7 +335,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         reward.append(r)
         rewards.append(info['rewards'])
         #texts.append(info['text'])
-        observed_torques.extend(info['observed_torques'])
+        # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         past = np.append(past, [np.copy(x)], axis=0)
         desired_torques = []
@@ -484,8 +484,7 @@ def execute_real_time(env, model, config, K):
                 txt = "Forward"
 
             base_pos = env.get_body_xyz()
-            #t.set_description(" Distance " + str(int(100 * base_pos[2]) / 100))
-            t.set_description(" Distance " + str(base_pos[2]))
+            t.set_description(" Distance " + str(int(100 * base_pos[0]) / 100))
             # env.pybullet_client.addUserDebugText(txt, base_pos + np.array([0, 0, 0.2]), [0, 0, 0], 4, 0.04)
             for k in range(K):
                 obs, rew, done, info = env.step(a)
@@ -556,8 +555,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
     traj_obs, traj_acs, traj_reward, traj_rewards = [[] for _ in range(n_task)], [[] for _ in range(n_task)], \
                                                     [[] for _ in range(n_task)], [[] for _ in range(n_task)]
     traj_observed_torques, traj_desired_torques = [[] for _ in range(n_task)], [[] for _ in range(n_task)]
-    # best_reward, best_distance = -np.inf, -np.inf
-    best_reward, best_height = -np.inf, -np.inf
+    best_reward, best_distance = -np.inf, -np.inf
     '''-------------Attempt to load saved data------------------'''
     if config['pretrained_model'] is not None:
         models = []
@@ -581,14 +579,13 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
         np.save(res_dir + '/mismatches.npy', mismatches)
 
     env = gym.make(*gym_args, **gym_kwargs)
-    #x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
-    z_index = env.obs_attributes_index['z'] if 'z' in config['obs_attributes'] else 0
+    x_index = env.obs_attributes_index['xdot'] if 'xdot' in config['obs_attributes'] else 0
     env.metadata['video.frames_per_second'] = 1 / config['ctrl_time_step']
 
     t = trange(config["iterations"] * n_task, desc='', leave=True)
     for index_iter in t:
         env_index = int(index_iter % n_task)
-        #env.set_mismatch(mismatches[env_index])
+        env.set_mismatch(mismatches[env_index])
 
         samples = {'acs': [], 'obs': [], 'reward': [], 'rewards': [], 'desired_torques': [], 'observed_torques': []}
         if data[env_index] is None or index_iter < config["random_episodes"] * n_task:
@@ -650,13 +647,9 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
         if (len(samples['reward'][0])) == config['episode_length']:
             best_reward = max(best_reward, np.sum(samples["reward"]))
-        # best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * config['ctrl_time_step'])
-        # t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
-        #     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
-        # t.refresh()
-        best_height = max(best_height, np.sum(np.array(samples['obs'][0])[:, z_index]) * config['ctrl_time_step'])
+        best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * config['ctrl_time_step'])
         t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
-            -np.inf)) + " Distance " + str(int(100 * best_height) / 100))
+            -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
         t.refresh()
 
         with open(os.path.join(config['logdir'], "logs.pk"), 'wb') as f:
@@ -715,8 +708,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
                     model_index = config['online_experts'][0]
                     env_index = int(index_iter) % n_task
                     local_index = index_iter // n_task
-                if (local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config[
-                    "test_iterations"] - 1:
+                if config['record_video'] and ((local_index + 1) % config['video_recording_frequency'] == 0 or local_index == config[
+                    "test_iterations"] - 1):
                     recorder = VideoRecorder(env, config['logdir'] + "/videos/run_" + str(local_index) + ".mp4")
                 else:
                     recorder = None
@@ -755,7 +748,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'])[:, x_index]) * 0.02)
+                current_distance = np.sum(np.array(samples['obs'])[:, x_index]) * 0.02
+                best_distance = max(best_distance, current_distance)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -797,7 +791,8 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
                 if (len(samples['reward'][0])) == config['episode_length']:
                     best_reward = max(best_reward, np.sum(samples["reward"]))
-                best_distance = max(best_distance, np.sum(np.array(samples['obs'][0])[:, x_index]) * 0.02)
+                current_distance = np.sum(np.array(samples['obs'])[:, x_index]) * 0.02
+                best_distance = max(best_distance, current_distance)
                 t.set_description(("Reward " + str(int(best_reward * 100) / 100) if best_reward != -np.inf else str(
                     -np.inf)) + " Distance " + str(int(100 * best_distance) / 100))
                 t.refresh()
@@ -811,7 +806,7 @@ def main(gym_args, mismatches, config, gym_kwargs={}):
 
             with open(res_dir + "/test_model_" + str(model_index) + "_costs_task_" + str(env_index) + ".txt",
                       "a+") as f:
-                f.write(str(c) + "\n")
+                f.write(str(c) + " : " + str(current_distance) + "\n")
 
             with open(os.path.join(config['logdir'], "test_logs.pk"), 'wb') as f:
                 pickle.dump({
@@ -858,7 +853,7 @@ config = {
     "test_iterations": 5,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
-    "action_space": 'Motor',
+    "action_space": ['S&E', 'Motor'][1],
     "on_rack": False,
     'hard_reset': False,
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
@@ -890,10 +885,10 @@ config = {
 
     # logging
     "render": True,
-    "record_video": 25,
-    "video_recording_frequency": 25,
+    "record_video": 1,
+    "video_recording_frequency": 1,
     "result_dir": "results",
-    "env_name": "spot_micro_standup_07",
+    "env_name": "spot_micro_standup_09",
     "exp_suffix": "experiment",
     "exp_dir": None,
     "exp_details": "SpotMicro evaluate from scratch",
@@ -1005,8 +1000,8 @@ args = ["SpotMicroStandupEnv-v0"]
 config_params = None
 run_mismatches = None
 
-config['exp_suffix'] = "nice_video"
-#config_params = []
+#config['exp_suffix'] = "nice_video"
+# config_params = []
 
 # mismatches = [
 #
@@ -1023,17 +1018,17 @@ config['exp_suffix'] = "nice_video"
 #     {"faulty_motors": [11], "faulty_joints": [-0.25]},
 # ]
 #
-#run_mismatches = []
-
+# run_mismatches = []
+#
 # for _ in range(1):
 #     for mismatch in mismatches:
-#         run_mismatches.append([{"load_weight": 0, "load_pos": 0.06}])
+#         run_mismatches.append([{"load_weight": 1, "load_pos": 0.06}])
 #         config_params.append({'hard_reset': True})
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
 
-""" For decreasing friction """
+# """ For decreasing friction """
 # for expert in experts:
 #     config_params.append({
 #         'pretrained_model': [path + "/run_" + str(expert)],
@@ -1043,27 +1038,48 @@ config['exp_suffix'] = "nice_video"
 #     })
 
 # mismatches = [
+#     ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0]},
+#                           {'friction': 0.2},
+#                           {'wind_force': -2},
+#                           ]),
     # ([0], [{'friction': 0.2}]),
-    # ([0], [{"wind_force": 2}]),
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [4], 'faulty_joints': [0.25]},
+    #                       {'faulty_motors': [10], 'faulty_joints': [0.75]},
+    #                       {'faulty_motors': [5], 'faulty_joints': [-1]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [10], 'faulty_joints': [0.25]},
+    #                       {'faulty_motors': [4], 'faulty_joints': [0.75]},
+    #                       {'faulty_motors': [11], 'faulty_joints': [0]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+    #                       {'faulty_motors': [5], 'faulty_joints': [-1.6]},
+    #                       {'faulty_motors': [10], 'faulty_joints': [1.25]}]),
+    #
+    # ([0, 250, 500, 750], [{}, {'faulty_motors': [5], 'faulty_joints': [-0.3]},
+    #                       {'faulty_motors': [11], 'faulty_joints': [-1.05]},
+    #                       {'faulty_motors': [4], 'faulty_joints': [-0.2]}]),
     # ([0], [{"wind_force": -1}]),
-    # ([0], [{"faulty_motors": [5], "faulty_joints": [-1]}]),
+    # ([0], [{"faulty_motors": [4], "faulty_joints": [0]}]),
     # ([0], [{"faulty_motors": [10], "faulty_joints": [1]}]),
     # ([0], [{"faulty_motors": [11], "faulty_joints": [0]}]),
     # ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
-    # ([0], [{"load_weight": 2, "load_pos": 0.07}]),
+    # ([0], [{"load_weight": 1, "load_pos": 0.06}]),
 # ]
 
-# tripod_path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/tripod/run_0"
-# tripod_mismatch = ([0], [{"faulty_motors": [3, 4, 5], "faulty_joints": [0, 0, 0]}])
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/4_motor_damaged_"
+# path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches/"
+# mismatch = ([0], [{}])
 #
-# experts = ['9']
+# experts = ['0']
 # """ For training course """
+#
 # for i, expert in enumerate(experts):
 #     config_params.append({
 #         'pretrained_model': [path + "/run_" + expert],
-#         "online_experts": [0],
+#         "online_experts": [0, 0, 0, 0], 'online': True, 'hard_reset': False,
 #         "obs_attributes": ['q', 'qdot', 'rpy', 'rpydot', 'xdot', 'ydot', 'z'],
-#         'test_mismatches': [mismatches[i]]
+#         "record_video": False, "test_iterations": 20, "render": False,
+#         'test_mismatches': [mismatches[i]], "episode_length": 1000,
 #     })
 
 

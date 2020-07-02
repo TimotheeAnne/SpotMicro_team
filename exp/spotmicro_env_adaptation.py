@@ -334,7 +334,7 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
         acs.append(np.copy(a))
         reward.append(r)
         rewards.append(info['rewards'])
-        texts.append(info['text'])
+        #texts.append(info['text'])
         # observed_torques.extend(info['observed_torques'])
         observed_torques = []
         past = np.append(past, [np.copy(x)], axis=0)
@@ -348,8 +348,8 @@ def execute(env, init_state, steps, init_mean, init_var, model, config, last_act
     if recorder is not None:
         recorder.capture_frame()
         recorder.close()
-        env.add_comments_to_video(texts=texts, path=config['logdir'] + "/videos/",  dt=config['ctrl_time_step'],
-                                  video_name="env_" + str(env_index) + "_run_" + str(index_iter))
+        # env.add_comments_to_video(texts=texts, path=config['logdir'] + "/videos/",  dt=config['ctrl_time_step'],
+        #                           video_name="env_" + str(env_index) + "_run_" + str(index_iter))
 
     samples['acs'].append(np.copy(acs))
     samples['obs'].append(np.copy(obs))

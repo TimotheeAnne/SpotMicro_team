@@ -9,8 +9,9 @@ os.sys.path.insert(0, parentdir)
 
 
 import gym
-#import env
-from spotmicro_team_tim.fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+#from spotmicro_team_tim.fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
+
 import numpy as np
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
@@ -23,7 +24,6 @@ import numpy as np
 import gym
 from gym import spaces
 
-#from fast_adaptation_embedding.env.assets.pybullet_envs import bullet_client
 
 
 # from pynput.keyboard import Key, Listener
@@ -409,8 +409,8 @@ class SpotMicroStandupEnv(gym.Env):
         reward, rewards = self.get_reward()
         #text = self.compute_current_comment()
         info = {'rewards': rewards, 'observed_torques': observed_torques}#, 'text': text}
-        #done = self.fallen()
-        done = self.goal_reached
+        done = self.fallen()
+        #done = self.goal_reached
         return np.array(obs), reward, done, info
 
     def fallen(self):
@@ -543,7 +543,7 @@ class SpotMicroStandupEnv(gym.Env):
 
         is_pos = False
 
-        if abs(position_reward) < 0.1:
+        if abs(position_reward) < 0.05:
             position_reward = 1.0 - position_reward
             is_pos = True
         else:
@@ -580,59 +580,59 @@ class SpotMicroStandupEnv(gym.Env):
 
         return reward, np.copy(rewards)
 
-    # def set_mismatch(self, mismatch):
-    #     """ a hard reset is required after setting_mismatch"""
-    #     self.mismatch = {'friction': 0.8,
-    #                      'changing_friction': False,
-    #                      'wind_force': 0,
-    #                      'load_weight': 0,
-    #                      'load_pos': 0,
-    #                      'faulty_motors': [],
-    #                      'faulty_joints': []}
-    #     self.active_mismatch = []
-    #     for (key, val) in mismatch.items():
-    #         self.mismatch[key] = val
-    #         self.active_mismatch.append(key)
-    #     assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
-    #     for x in self.mismatch['faulty_motors']:
-    #         assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
-    #     assert len(self.mismatch['faulty_motors']) == len(
-    #         self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
-    #     assert 0 <= self.mismatch['load_weight'], 'load weight must be >= 0'
-    #     assert -0.07 <= self.mismatch['load_pos'] <= 0.07, 'load pos must be in [-0.07,0.07]'
+    def set_mismatch(self, mismatch):
+        """ a hard reset is required after setting_mismatch"""
+        self.mismatch = {'friction': 0.8,
+                         'changing_friction': False,
+                         'wind_force': 0,
+                         'load_weight': 0,
+                         'load_pos': 0,
+                         'faulty_motors': [],
+                         'faulty_joints': []}
+        self.active_mismatch = []
+        for (key, val) in mismatch.items():
+            self.mismatch[key] = val
+            self.active_mismatch.append(key)
+        assert 0 <= self.mismatch['friction'], 'friction must be non-negative'
+        for x in self.mismatch['faulty_motors']:
+            assert 0 <= x < 12, 'faulty motor must be None or an int in [0;11]'
+        assert len(self.mismatch['faulty_motors']) == len(
+            self.mismatch['faulty_joints']), "must specify a joint for each faulty motor"
+        assert 0 <= self.mismatch['load_weight'], 'load weight must be >= 0'
+        assert -0.07 <= self.mismatch['load_pos'] <= 0.07, 'load pos must be in [-0.07,0.07]'
 
-        # self.lateral_friction = self.mismatch['friction']
-        # self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
-        # self.wind_force = np.abs(self.mismatch['wind_force'])
-        # self.faulty_motors = self.mismatch['faulty_motors']
-        # self.faulty_joints = self.mismatch['faulty_joints']
-        # self.load_weight = self.mismatch['load_weight']
-        # self.load_pos = self.mismatch['load_pos']
-        # self.changing_friction = self.mismatch['changing_friction']
+        self.lateral_friction = self.mismatch['friction']
+        self.wind_angle = np.pi / 2 if self.mismatch['wind_force'] > 0 else -np.pi / 2
+        self.wind_force = np.abs(self.mismatch['wind_force'])
+        self.faulty_motors = self.mismatch['faulty_motors']
+        self.faulty_joints = self.mismatch['faulty_joints']
+        self.load_weight = self.mismatch['load_weight']
+        self.load_pos = self.mismatch['load_pos']
+        self.changing_friction = self.mismatch['changing_friction']
 
-        #self.apply_mismatch()
+        self.apply_mismatch()
 
-    # def apply_mismatch(self):
-    #     if self.wind_force == 0:
-    #         self.pybullet_client.resetBasePositionAndOrientation(self.wind_arrow, [0, 0, -2], p.getQuaternionFromEuler((0, 0, 0)))
-    #     # for motor in range(12):
-    #     #     if motor in self.faulty_motors:
-    #     #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
-    #     #                                                rgbaColor=[1, 0, 0, 1])
-    #     #     else:
-    #     #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
-    #     #                                                rgbaColor=MOTORS_COLORS[motor])
-    #     if self.changing_friction:
-    #         cc = (0.8 - self.lateral_friction) / 0.9
-    #         self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95 * cc])
-    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
-    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
-    #     elif self.lateral_friction < 0.4:
-    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., ])
-    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
-    #     else:
-    #         self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id, rgbaColor=[1., 1., 1., 1])
-    #         self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+    def apply_mismatch(self):
+        if self.wind_force == 0:
+            self.pybullet_client.resetBasePositionAndOrientation(self.wind_arrow, [0, 0, -2], p.getQuaternionFromEuler((0, 0, 0)))
+        # for motor in range(12):
+        #     if motor in self.faulty_motors:
+        #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+        #                                                rgbaColor=[1, 0, 0, 1])
+        #     else:
+        #         self.pybullet_client.changeVisualShape(self.quadruped, self._motor_id_list[motor],
+        #                                                rgbaColor=MOTORS_COLORS[motor])
+        if self.changing_friction:
+            cc = (0.8 - self.lateral_friction) / 0.9
+            self.pybullet_client.changeVisualShape(self.ice_planeUid, -1, rgbaColor=[1, 1, 1, .95 * cc])
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, rgbaColor=[1., 1., 1., 1 - 0.8 * cc])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+        elif self.lateral_friction < 0.4:
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.ice_texture_id, rgbaColor=[1., 1., 1., ])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
+        else:
+            self.pybullet_client.changeVisualShape(self.planeUid, -1, textureUniqueId=self.texture_id, rgbaColor=[1., 1., 1., 1])
+            self.pybullet_client.changeDynamics(self.planeUid, -1, lateralFriction=self.lateral_friction)
 
 
     def get_observation_upper_bound(self):
