@@ -858,7 +858,7 @@ config = {
     "test_iterations": 5,
     "init_state": None,  # Must be updated before passing config as param
     "action_dim": 12,
-    "action_space": ['S&E', 'Motor'][1],
+    "action_space": 'Motor',
     "on_rack": False,
     'hard_reset': False,
     # choice of action space between Motor joint, swing and extension of each leg and delta motor joint
@@ -1006,7 +1006,7 @@ config_params = None
 run_mismatches = None
 
 config['exp_suffix'] = "nice_video"
-config_params = []
+#config_params = []
 
 # mismatches = [
 #
@@ -1023,12 +1023,12 @@ config_params = []
 #     {"faulty_motors": [11], "faulty_joints": [-0.25]},
 # ]
 #
-run_mismatches = []
+#run_mismatches = []
 
-for _ in range(1):
-    for mismatch in mismatches:
-        run_mismatches.append([{"load_weight": 2, "load_pos": 0.06}])
-        config_params.append({'hard_reset': True})
+# for _ in range(1):
+#     for mismatch in mismatches:
+#         run_mismatches.append([{"load_weight": 0, "load_pos": 0.06}])
+#         config_params.append({'hard_reset': True})
 
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/all_mismatches"
 # path = "/home/haretis/Documents/SpotMicro_team/exp_meta_learning_embedding/data/spotmicro/frictions3_run0"
