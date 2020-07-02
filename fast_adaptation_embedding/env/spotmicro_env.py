@@ -355,7 +355,7 @@ class SpotMicroEnv(gym.Env):
             f = self.lateral_friction
             text += "friction: " + "{:1.2f}".format(f) + " - "
         if 'wind_force' in self.active_mismatch:
-            if self.wind_force > 0:
+            if self.wind_angle > 0:
                 text += "Right Wind: " + "{:1.1f}".format(self.wind_force) + "N - "
             else:
                 text += "Left Wind: " + "{:1.1f}".format(-self.wind_force) + "N - "
@@ -401,7 +401,6 @@ class SpotMicroEnv(gym.Env):
 
     def step(self, action):
         # time.sleep(1)
-        print(self.lateral_friction)
         a = np.copy(action)
         if self.changing_friction:
             self.lateral_friction = 0.8 - 0.7 * self.t/10
@@ -733,10 +732,10 @@ if __name__ == "__main__":
 
     O, A = [], []
     for iter in tqdm(range(1)):
-        env.set_mismatch({})
+        # env.set_mismatch({})
         # env.set_mismatch({"faulty_motors": [4], "faulty_joints": [0]})
         # env.set_mismatch({"friction": 0.8})
-        # env.set_mismatch({"wind_force": -1})
+        env.set_mismatch({"wind_force": -1})
         # env.set_mismatch({"load_weight": 1, "load_pos": 0.07})
         # env.set_mismatch({"changing_friction": True})
 
@@ -744,8 +743,8 @@ if __name__ == "__main__":
         # time.sleep(10)
         video_name = "video"
 
-        recorder = None
-        # recorder = VideoRecorder(env, video_name+".mp4")
+        # recorder = None
+        recorder = VideoRecorder(env, video_name+".mp4")
 
         ub = 1
         lb = -1
@@ -774,7 +773,7 @@ if __name__ == "__main__":
 
 
         degree = 3
-        steps = 500
+        steps = 5
         t = trange(3, steps + 3, desc='', leave=True)
         # t = range(3, steps + 3)
         for i in t:
