@@ -45,7 +45,6 @@ class Kuka:
     objects = p.loadSDF(os.path.join(self.urdfRootPath, "kuka_iiwa/kuka_with_gripper2.sdf"))
     self.kukaUid = objects[0]
     #for i in range (p.getNumJoints(self.kukaUid)):
-    #  print(p.getJointInfo(self.kukaUid,i))
     p.resetBasePositionAndOrientation(self.kukaUid, [-0.100000, 0.000000, 0.070000],
                                       [0.000000, 0.000000, 0.000000, 1.000000])
     self.jointPositions = [
@@ -73,8 +72,6 @@ class Kuka:
       jointInfo = p.getJointInfo(self.kukaUid, i)
       qIndex = jointInfo[3]
       if qIndex > -1:
-        #print("motorname")
-        #print(jointInfo[1])
         self.motorNames.append(str(jointInfo[1]))
         self.motorIndices.append(i)
 
@@ -99,9 +96,6 @@ class Kuka:
     return observation
 
   def applyAction(self, motorCommands):
-
-    #print ("self.numJoints")
-    #print (self.numJoints)
     if (self.useInverseKinematics):
 
       dx = motorCommands[0]
@@ -112,8 +106,6 @@ class Kuka:
 
       state = p.getLinkState(self.kukaUid, self.kukaEndEffectorIndex)
       actualEndEffectorPos = state[0]
-      #print("pos[2] (getLinkState(kukaEndEffectorIndex)")
-      #print(actualEndEffectorPos[2])
 
       self.endEffectorPos[0] = self.endEffectorPos[0] + dx
       if (self.endEffectorPos[0] > 0.65):
@@ -126,11 +118,6 @@ class Kuka:
       if (self.endEffectorPos[1] > 0.22):
         self.endEffectorPos[1] = 0.22
 
-      #print ("self.endEffectorPos[2]")
-      #print (self.endEffectorPos[2])
-      #print("actualEndEffectorPos[2]")
-      #print(actualEndEffectorPos[2])
-      #if (dz<0 or actualEndEffectorPos[2]<0.5):
       self.endEffectorPos[2] = self.endEffectorPos[2] + dz
 
       self.endEffectorAngle = self.endEffectorAngle + da
@@ -158,13 +145,8 @@ class Kuka:
         else:
           jointPoses = p.calculateInverseKinematics(self.kukaUid, self.kukaEndEffectorIndex, pos)
 
-      #print("jointPoses")
-      #print(jointPoses)
-      #print("self.kukaEndEffectorIndex")
-      #print(self.kukaEndEffectorIndex)
       if (self.useSimulation):
         for i in range(self.kukaEndEffectorIndex + 1):
-          #print(i)
           p.setJointMotorControl2(bodyUniqueId=self.kukaUid,
                                   jointIndex=i,
                                   controlMode=p.POSITION_CONTROL,
